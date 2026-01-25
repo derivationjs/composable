@@ -1,0 +1,56 @@
+import { Map as IMap } from "immutable";
+import { Operations } from "./operations.js";
+
+/**
+ * Commands for manipulating an Immutable.Map
+ */
+export type MapCommand<K, V> =
+  | { type: "set"; key: K; value: V }
+  | { type: "update"; key: K; command: unknown }
+  | { type: "delete"; key: K }
+  | { type: "clear" };
+
+/**
+ * Operations implementation for Immutable.Map
+ */
+export class MapOperations<K, V> implements Operations<IMap<K, V>> {
+  constructor(private valueOps: Operations<V>) {}
+
+  apply(state: IMap<K, V>, command: unknown): IMap<K, V> {
+    const commands = command as Array<MapCommand<K, V>>;
+
+    return commands.reduce((s, cmd) => {
+      switch (cmd.type) {
+        case "set":
+          return s.set(cmd.key, cmd.value);
+        case "update": {
+          const item = s.get(cmd.key);
+          if (item === undefined) return s;
+          const newItem = this.valueOps.apply(item, cmd.command);
+          return s.set(cmd.key, newItem);
+        }
+        case "delete":
+          return s.delete(cmd.key);
+        case "clear":
+          return IMap();
+        default:
+          return s;
+      }
+    }, state);
+  }
+
+  emptyCommand(): unknown {
+    return [];
+  }
+
+  isEmpty(command: unknown): boolean {
+    const commands = command as Array<MapCommand<K, V>>;
+    return commands.length === 0;
+  }
+
+  mergeCommands(firstCommand: unknown, secondCommand: unknown): unknown {
+    const firstCommands = firstCommand as Array<MapCommand<K, V>>;
+    const secondCommands = secondCommand as Array<MapCommand<K, V>>;
+    return [...firstCommands, ...secondCommands];
+  }
+}
