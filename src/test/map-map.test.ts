@@ -4,16 +4,10 @@ import { Map as IMap } from "immutable";
 import { Reactive } from "../reactive.js";
 import { MapOperations, MapCommand } from "../map-operations.js";
 import { mapMap } from "../map-reactive.js";
-import { Operations } from "../operations.js";
+import { PrimitiveOperations } from "../primitive-operations.js";
 
 // Simple operations for number values
-const numberOps: Operations<number> = {
-  emptyCommand: () => null,
-  isEmpty: (cmd: unknown) => cmd === null,
-  mergeCommands: (a: unknown, b: unknown) => b ?? a,
-  apply: (state: number, cmd: unknown) =>
-    cmd !== null ? (cmd as number) : state,
-};
+const numberOps = new PrimitiveOperations<number>();
 
 describe("mapMap", () => {
   let graph: Graph;
@@ -32,7 +26,7 @@ describe("mapMap", () => {
   });
 
   it("should map empty map to empty map", () => {
-    const mapped = mapMap(graph, numberOps, map, (rx) => {
+    const mapped = mapMap<string, number, number>(graph, map, (rx) => {
       const doubled = rx.materialized.map((x) => x * 2);
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
@@ -53,7 +47,7 @@ describe("mapMap", () => {
       initialMap,
     );
 
-    const mapped = mapMap(graph, numberOps, mapWithData, (rx) => {
+    const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
       const doubled = rx.materialized.map((x) => x * 2);
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
@@ -68,7 +62,7 @@ describe("mapMap", () => {
   });
 
   it("should handle set", () => {
-    const mapped = mapMap(graph, numberOps, map, (rx) => {
+    const mapped = mapMap<string, number, number>(graph, map, (rx) => {
       const doubled = rx.materialized.map((x) => x * 2);
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
@@ -84,7 +78,7 @@ describe("mapMap", () => {
   });
 
   it("should handle multiple sets", () => {
-    const mapped = mapMap(graph, numberOps, map, (rx) => {
+    const mapped = mapMap<string, number, number>(graph, map, (rx) => {
       const doubled = rx.materialized.map((x) => x * 2);
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
@@ -114,7 +108,7 @@ describe("mapMap", () => {
       initialMap,
     );
 
-    const mapped = mapMap(graph, numberOps, mapWithData, (rx) => {
+    const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
       const doubled = rx.materialized.map((x) => x * 2);
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
@@ -143,7 +137,7 @@ describe("mapMap", () => {
       initialMap,
     );
 
-    const mapped = mapMap(graph, numberOps, mapWithData, (rx) => {
+    const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
       const doubled = rx.materialized.map((x) => x * 2);
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
@@ -169,7 +163,7 @@ describe("mapMap", () => {
       initialMap,
     );
 
-    const mapped = mapMap(graph, numberOps, mapWithData, (rx) => {
+    const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
       const doubled = rx.materialized.map((x) => x * 2);
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
@@ -193,7 +187,7 @@ describe("mapMap", () => {
       initialMap,
     );
 
-    const mapped = mapMap(graph, numberOps, mapWithData, (rx) => {
+    const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
       const doubled = rx.materialized.map((x) => x * 2);
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
@@ -230,7 +224,7 @@ describe("mapMap", () => {
 
     let fCallCount = 0;
 
-    const mapped = mapMap(graph, numberOps, mapWithData, (rx) => {
+    const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
       fCallCount++;
       const doubled = rx.materialized.map((x) => x * 2);
       const doubledChanges = rx.changes.map((cmd) =>
@@ -276,7 +270,7 @@ describe("mapMap", () => {
       initialMap,
     );
 
-    const mapped = mapMap(graph, numberOps, mapWithData, (rx) => {
+    const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
       const doubled = rx.materialized.map((x) => x * 2);
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
@@ -308,7 +302,7 @@ describe("mapMap", () => {
 
     const keysReceived: string[] = [];
 
-    const mapped = mapMap<string, number, number>(graph, numberOps, mapWithData, (rx, key) => {
+    const mapped = mapMap<string, number, number>(graph, mapWithData, (rx, key) => {
       keysReceived.push(key);
       const doubled = rx.materialized.map((x) => x * 2);
       const doubledChanges = rx.changes.map((cmd) =>

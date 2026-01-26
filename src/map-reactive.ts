@@ -1,9 +1,10 @@
 import { Map as IMap } from "immutable";
 import { Graph, ReactiveValue, constantValue } from "derivation";
 import { Reactive } from "./reactive.js";
-import { Operations } from "./operations.js";
-import { MapCommand } from "./map-operations.js";
+import { Operations, asBase, OperationsBase } from "./operations.js";
+import { MapCommand, MapOperations } from "./map-operations.js";
 import { groupBy } from "./group-by.js";
+import { PrimitiveOperations } from "./primitive-operations.js";
 
 /**
  * Converts a Map of reactive values into a reactive Map.
@@ -33,10 +34,11 @@ export function sequenceMap<K, V>(
  */
 export function mapMap<K, X, Y>(
   graph: Graph,
-  valueOperations: Operations<X>,
   map: Reactive<IMap<K, X>>,
   f: (x: Reactive<X>, key: K) => Reactive<Y>,
 ): Reactive<IMap<K, Y>> {
+  // Extract X operations from the map's operations
+  const valueOperations = map.operations.valueOperations;
   // Group updates by key
   const groupedUpdates = groupBy(
     map.changes.map((cmds) => {
@@ -52,18 +54,23 @@ export function mapMap<K, X, Y>(
   // Map to store Reactive<Y> for each key
   const yReactives = new Map<K, Reactive<Y>>();
 
+  // Create MapOperations with undefined - we'll populate it lazily from first Y reactive
+  const yMapOps = new MapOperations<K, Y>(undefined as unknown as Operations<Y>);
+
   // Helper to get or create Reactive<Y> for a key
   function getOrCreateY(key: K, initialValue: X): Reactive<Y> {
     let ry = yReactives.get(key);
     if (!ry) {
       const itemChanges = groupedUpdates.select(key).map((cmds) =>
         cmds.reduce(
-          (acc, cmd) => valueOperations.mergeCommands(acc, cmd),
-          valueOperations.emptyCommand(),
+          (acc, cmd) => asBase(valueOperations).mergeCommands(acc, cmd),
+          asBase(valueOperations).emptyCommand(),
         ),
       );
       const rx = Reactive.create(graph, valueOperations, itemChanges, initialValue);
       ry = f(rx, key);
+      // Capture Y operations from the first reactive we create
+      yMapOps.unsafeUpdateValueOperations(ry.operations);
       yReactives.set(key, ry);
     }
     return ry;
@@ -111,30 +118,6 @@ export function mapMap<K, X, Y>(
   const initialYMap: IMap<K, Y> = map.snapshot.map((_, key) =>
     yReactives.get(key)!.snapshot
   );
-
-  // Operations for Map<K, Y> - uses snapshots for updates
-  const yMapOps: Operations<IMap<K, Y>> = {
-    emptyCommand: () => [],
-    isEmpty: (cmd) => (cmd as MapCommand<K, Y>[]).length === 0,
-    mergeCommands: (a, b) => [...(a as MapCommand<K, Y>[]), ...(b as MapCommand<K, Y>[])],
-    apply: (state, cmd) => {
-      const commands = cmd as MapCommand<K, Y>[];
-      return commands.reduce((s, c) => {
-        switch (c.type) {
-          case "set":
-            return s.set(c.key, c.value);
-          case "update": {
-            const ry = yReactives.get(c.key);
-            return ry ? s.set(c.key, ry.snapshot) : s;
-          }
-          case "delete":
-            return s.delete(c.key);
-          case "clear":
-            return s.clear();
-        }
-      }, state);
-    },
-  };
 
   return Reactive.create(graph, yMapOps, yChanges, initialYMap);
 }

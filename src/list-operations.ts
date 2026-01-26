@@ -1,5 +1,5 @@
 import { List } from "immutable";
-import { Operations } from "./operations.js";
+import { OperationsBase, Operations, asBase } from "./operations.js";
 
 /**
  * Commands for manipulating an Immutable.List
@@ -14,8 +14,16 @@ export type ListCommand<T> =
 /**
  * Operations implementation for Immutable.List
  */
-export class ListOperations<T> implements Operations<List<T>> {
+export class ListOperations<T> implements OperationsBase<List<T>> {
   constructor(private itemOps: Operations<T>) {}
+
+  get itemOperations(): Operations<T> {
+    return this.itemOps;
+  }
+
+  unsafeUpdateItemOperations(itemOps: Operations<T>): void {
+    this.itemOps = itemOps;
+  }
 
   apply(state: List<T>, command: unknown): List<T> {
     const commands = command as Array<ListCommand<T>>;
@@ -27,7 +35,7 @@ export class ListOperations<T> implements Operations<List<T>> {
         case "update": {
           const item = s.get(cmd.index);
           if (item === undefined) return s;
-          const newItem = this.itemOps.apply(item, cmd.command);
+          const newItem = asBase(this.itemOps).apply(item, cmd.command);
           return s.set(cmd.index, newItem);
         }
         case "remove":

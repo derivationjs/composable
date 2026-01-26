@@ -1,7 +1,7 @@
-import { Operations } from "./operations.js";
+import { OperationsBase } from "./operations.js";
 
 export class PrimitiveOperations<T extends NonNullable<unknown>>
-  implements Operations<T>
+  implements OperationsBase<T>
 {
   constructor() {}
 

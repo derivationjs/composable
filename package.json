@@ -3,10 +3,17 @@
   "author": "Daniel Waterworth",
   "license": "MIT",
   "description": "Experimental library for expressive, react data flows.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "exports": {
+    "./z-set.js": "./dist/z-set.js",
+    "./z-map.js": "./dist/z-map.js",
+    "./reactive.js": "./dist/reactive.js",
+    "./z-set-operations.js": "./dist/z-set-operations.js",
+    "./z-map-operations.js": "./dist/z-map-operations.js",
+    "./z-set-change-input.js": "./dist/z-set-change-input.js",
+    "./z-map-change-input.js": "./dist/z-map-change-input.js"
+  },
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",

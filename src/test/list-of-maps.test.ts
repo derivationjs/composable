@@ -6,16 +6,10 @@ import { ListOperations, ListCommand } from "../list-operations.js";
 import { MapOperations, MapCommand } from "../map-operations.js";
 import { mapList } from "../list-reactive.js";
 import { mapMap } from "../map-reactive.js";
-import { Operations } from "../operations.js";
+import { PrimitiveOperations } from "../primitive-operations.js";
 
 // Simple operations for string values
-const stringOps: Operations<string> = {
-  emptyCommand: () => null,
-  isEmpty: (cmd: unknown) => cmd === null,
-  mergeCommands: (a: unknown, b: unknown) => b ?? a,
-  apply: (state: string, cmd: unknown) =>
-    cmd !== null ? (cmd as string) : state,
-};
+const stringOps = new PrimitiveOperations<string>();
 
 const mapOps = new MapOperations<string, string>(stringOps);
 const listOps = new ListOperations(mapOps);
@@ -37,15 +31,15 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
   });
 
   it("should map over list and nested maps", () => {
-    const initialList = List([
+    const initialList: List<IMap<string, string>> = List([
       IMap({ name: "alice", role: "admin" }),
       IMap({ name: "bob", role: "user" }),
     ]);
     const listWithData = Reactive.create(graph, listOps, changes, initialList);
 
     // Map over the list, then map over each map's values to uppercase them
-    const mapped = mapList(graph, mapOps, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, stringOps, rxMap, (rxString) => {
+    const mapped = mapList(graph, listWithData, (rxMap) => {
+      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
         const upper = rxString.materialized.map((s) => s.toUpperCase());
         const upperChanges = rxString.changes.map((cmd) =>
           cmd !== null ? (cmd as string).toUpperCase() : null,
@@ -62,13 +56,13 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
   });
 
   it("should handle inserting a new map into the list", () => {
-    const initialList = List([
+    const initialList: List<IMap<string, string>> = List([
       IMap({ name: "alice" }),
     ]);
     const listWithData = Reactive.create(graph, listOps, changes, initialList);
 
-    const mapped = mapList(graph, mapOps, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, stringOps, rxMap, (rxString) => {
+    const mapped = mapList(graph, listWithData, (rxMap) => {
+      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
         const upper = rxString.materialized.map((s) => s.toUpperCase());
         const upperChanges = rxString.changes.map((cmd) =>
           cmd !== null ? (cmd as string).toUpperCase() : null,
@@ -90,14 +84,14 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
   });
 
   it("should handle updating a value in a nested map", () => {
-    const initialList = List([
+    const initialList: List<IMap<string, string>> = List([
       IMap({ name: "alice", role: "admin" }),
       IMap({ name: "bob", role: "user" }),
     ]);
     const listWithData = Reactive.create(graph, listOps, changes, initialList);
 
-    const mapped = mapList(graph, mapOps, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, stringOps, rxMap, (rxString) => {
+    const mapped = mapList(graph, listWithData, (rxMap) => {
+      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
         const upper = rxString.materialized.map((s) => s.toUpperCase());
         const upperChanges = rxString.changes.map((cmd) =>
           cmd !== null ? (cmd as string).toUpperCase() : null,
@@ -122,13 +116,13 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
   });
 
   it("should handle adding a new key to a nested map", () => {
-    const initialList = List([
+    const initialList: List<IMap<string, string>> = List([
       IMap({ name: "alice" }),
     ]);
     const listWithData = Reactive.create(graph, listOps, changes, initialList);
 
-    const mapped = mapList(graph, mapOps, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, stringOps, rxMap, (rxString) => {
+    const mapped = mapList(graph, listWithData, (rxMap) => {
+      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
         const upper = rxString.materialized.map((s) => s.toUpperCase());
         const upperChanges = rxString.changes.map((cmd) =>
           cmd !== null ? (cmd as string).toUpperCase() : null,
@@ -152,15 +146,15 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
   });
 
   it("should handle removing a map from the list", () => {
-    const initialList = List([
+    const initialList: List<IMap<string, string>> = List([
       IMap({ name: "alice" }),
       IMap({ name: "bob" }),
       IMap({ name: "charlie" }),
     ]);
     const listWithData = Reactive.create(graph, listOps, changes, initialList);
 
-    const mapped = mapList(graph, mapOps, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, stringOps, rxMap, (rxString) => {
+    const mapped = mapList(graph, listWithData, (rxMap) => {
+      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
         const upper = rxString.materialized.map((s) => s.toUpperCase());
         const upperChanges = rxString.changes.map((cmd) =>
           cmd !== null ? (cmd as string).toUpperCase() : null,
@@ -182,13 +176,13 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
   });
 
   it("should handle deleting a key from a nested map", () => {
-    const initialList = List([
+    const initialList: List<IMap<string, string>> = List([
       IMap({ name: "alice", temp: "data" }),
     ]);
     const listWithData = Reactive.create(graph, listOps, changes, initialList);
 
-    const mapped = mapList(graph, mapOps, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, stringOps, rxMap, (rxString) => {
+    const mapped = mapList(graph, listWithData, (rxMap) => {
+      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
         const upper = rxString.materialized.map((s) => s.toUpperCase());
         const upperChanges = rxString.changes.map((cmd) =>
           cmd !== null ? (cmd as string).toUpperCase() : null,
@@ -212,14 +206,14 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
   });
 
   it("should handle complex batch operations", () => {
-    const initialList = List([
+    const initialList: List<IMap<string, string>> = List([
       IMap({ name: "alice", role: "admin" }),
       IMap({ name: "bob", role: "user" }),
     ]);
     const listWithData = Reactive.create(graph, listOps, changes, initialList);
 
-    const mapped = mapList(graph, mapOps, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, stringOps, rxMap, (rxString) => {
+    const mapped = mapList(graph, listWithData, (rxMap) => {
+      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
         const upper = rxString.materialized.map((s) => s.toUpperCase());
         const upperChanges = rxString.changes.map((cmd) =>
           cmd !== null ? (cmd as string).toUpperCase() : null,
@@ -248,7 +242,7 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
   });
 
   it("should call mapping functions correct number of times", () => {
-    const initialList = List([
+    const initialList: List<IMap<string, string>> = List([
       IMap({ a: "1", b: "2" }),
     ]);
     const listWithData = Reactive.create(graph, listOps, changes, initialList);
@@ -256,9 +250,9 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
     let listMapCalls = 0;
     let mapMapCalls = 0;
 
-    const mapped = mapList(graph, mapOps, listWithData, (rxMap) => {
+    const mapped = mapList(graph, listWithData, (rxMap) => {
       listMapCalls++;
-      return mapMap<string, string, string>(graph, stringOps, rxMap, (rxString) => {
+      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
         mapMapCalls++;
         const upper = rxString.materialized.map((s) => s.toUpperCase());
         const upperChanges = rxString.changes.map((cmd) =>

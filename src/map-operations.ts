@@ -1,5 +1,5 @@
 import { Map as IMap } from "immutable";
-import { Operations } from "./operations.js";
+import { OperationsBase, Operations, asBase } from "./operations.js";
 
 /**
  * Commands for manipulating an Immutable.Map
@@ -13,8 +13,16 @@ export type MapCommand<K, V> =
 /**
  * Operations implementation for Immutable.Map
  */
-export class MapOperations<K, V> implements Operations<IMap<K, V>> {
+export class MapOperations<K, V> implements OperationsBase<IMap<K, V>> {
   constructor(private valueOps: Operations<V>) {}
+
+  get valueOperations(): Operations<V> {
+    return this.valueOps;
+  }
+
+  unsafeUpdateValueOperations(valueOps: Operations<V>): void {
+    this.valueOps = valueOps;
+  }
 
   apply(state: IMap<K, V>, command: unknown): IMap<K, V> {
     const commands = command as Array<MapCommand<K, V>>;
@@ -26,7 +34,7 @@ export class MapOperations<K, V> implements Operations<IMap<K, V>> {
         case "update": {
           const item = s.get(cmd.key);
           if (item === undefined) return s;
-          const newItem = this.valueOps.apply(item, cmd.command);
+          const newItem = asBase(this.valueOps).apply(item, cmd.command);
           return s.set(cmd.key, newItem);
         }
         case "delete":

@@ -1,8 +1,8 @@
 import { List } from "immutable";
 import { Graph, ReactiveValue, constantValue } from "derivation";
 import { Reactive } from "./reactive.js";
-import { Operations } from "./operations.js";
-import { ListCommand } from "./list-operations.js";
+import { Operations, asBase } from "./operations.js";
+import { ListCommand, ListOperations } from "./list-operations.js";
 import { tagWithIds, ID } from "./tag-with-ids.js";
 import { groupBy } from "./group-by.js";
 
@@ -26,10 +26,11 @@ export function sequenceList<X>(
 
 export function mapList<X, Y>(
   graph: Graph,
-  operations: Operations<X>,
   list: Reactive<List<X>>,
   f: (x: Reactive<X>) => Reactive<Y>,
 ): Reactive<List<Y>> {
+  // Extract X operations from the list's operations
+  const operations = list.operations.itemOperations;
   const { structure, updates, initialValues } = tagWithIds(list);
 
   // Group updates by ID
@@ -42,6 +43,9 @@ export function mapList<X, Y>(
   // Map to store Reactive<Y> for each ID
   const yReactives = new Map<ID, Reactive<Y>>();
 
+  // Create ListOperations with undefined - we'll populate it lazily from first Y reactive
+  const yListOps = new ListOperations<Y>(undefined as unknown as Operations<Y>);
+
   // Helper to get or create Reactive<Y> for an ID
   function getOrCreateY(id: ID): Reactive<Y> {
     let ry = yReactives.get(id);
@@ -49,12 +53,14 @@ export function mapList<X, Y>(
       const initialValue = initialValues.get(id)!;
       const itemChanges = groupedUpdates.select(id).map((cmds) =>
         cmds.reduce(
-          (acc, cmd) => operations.mergeCommands(acc, cmd),
-          operations.emptyCommand(),
+          (acc, cmd) => asBase(operations).mergeCommands(acc, cmd),
+          asBase(operations).emptyCommand(),
         ),
       );
       const rx = Reactive.create(graph, operations, itemChanges, initialValue);
       ry = f(rx);
+      // Capture Y operations from the first reactive we create
+      yListOps.unsafeUpdateItemOperations(ry.operations);
       yReactives.set(id, ry);
     }
     return ry;
@@ -123,35 +129,6 @@ export function mapList<X, Y>(
   const initialYList = List(
     structure.snapshot.map((id) => yReactives.get(id)!.snapshot).toArray()
   );
-
-  // Operations for List<Y> - uses snapshots for updates
-  const yListOps: Operations<List<Y>> = {
-    emptyCommand: () => [],
-    isEmpty: (cmd) => (cmd as ListCommand<Y>[]).length === 0,
-    mergeCommands: (a, b) => [...(a as ListCommand<Y>[]), ...(b as ListCommand<Y>[])],
-    apply: (state, cmd) => {
-      const commands = cmd as ListCommand<Y>[];
-      return commands.reduce((s, c) => {
-        switch (c.type) {
-          case "insert":
-            return s.insert(c.index, c.value);
-          case "update": {
-            const id = structure.snapshot.get(c.index);
-            const ry = id ? yReactives.get(id) : undefined;
-            return ry ? s.set(c.index, ry.snapshot) : s;
-          }
-          case "remove":
-            return s.remove(c.index);
-          case "move": {
-            const item = s.get(c.from);
-            return item !== undefined ? s.remove(c.from).insert(c.to, item) : s;
-          }
-          case "clear":
-            return List<Y>();
-        }
-      }, state);
-    },
-  };
 
   return Reactive.create(graph, yListOps, yChanges, initialYList);
 }
