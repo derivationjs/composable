@@ -2,6 +2,8 @@ import { Graph, ReactiveValue } from "derivation";
 import { Reactive } from "./reactive.js";
 import { Log } from "./log.js";
 import type { LogCommand } from "./log-operations.js";
+import { ZSet } from "./z-set.js";
+import { ZSetOperations } from "./z-set-operations.js";
 
 /**
  * Create a reactive fold operation over a Log.
@@ -24,10 +26,7 @@ export function foldLog<T, S>(
   return source.changes.accumulate(initialValue, (acc, command) => {
     const commands = command as Array<LogCommand<T>>;
     return commands.reduce((result, cmd) => {
-      if (cmd.type === "append") {
-        return reducer(result, cmd.value);
-      }
-      return result;
+      return reducer(result, cmd);
     }, acc);
   });
 }
@@ -46,4 +45,29 @@ export function lengthLog<T>(
     const commands = command as Array<LogCommand<T>>;
     return length + commands.length;
   });
+}
+
+/**
+ * Flatten a reactive Log of ZSets into a single reactive ZSet.
+ * Unions all ZSets in the log together.
+ * Uses incremental computation to union only new entries.
+ */
+export function unionLogOfZSets<T>(
+  graph: Graph,
+  source: Reactive<Log<ZSet<T>>>,
+): Reactive<ZSet<T>> {
+  const operations = new ZSetOperations<T>();
+
+  // When log entries are added, union all the new ZSets together
+  const changes = source.changes.map((cmd) => {
+    const commands = cmd as Array<ZSet<T>>;
+    return commands.reduce((acc, zset) => acc.union(zset), new ZSet<T>());
+  });
+
+  // Initial snapshot: union all ZSets in the initial log
+  const initialSnapshot = source.previousSnapshot
+    .toArray()
+    .reduce((acc, zset) => acc.union(zset), new ZSet<T>());
+
+  return Reactive.create(graph, operations, changes, initialSnapshot);
 }

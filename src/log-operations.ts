@@ -5,7 +5,7 @@ import { OperationsBase } from "./operations.js";
  * Commands for manipulating a Log.
  * Only append operations are supported to maintain append-only semantics.
  */
-export type LogCommand<T> = { type: "append"; value: T };
+export type LogCommand<T> = T;
 
 /**
  * Operations implementation for append-only Log.
@@ -17,12 +17,7 @@ export class LogOperations<T> implements OperationsBase<Log<T>> {
     const commands = command as Array<LogCommand<T>>;
 
     return commands.reduce((s, cmd) => {
-      switch (cmd.type) {
-        case "append":
-          return s.append(cmd.value);
-        default:
-          return s;
-      }
+      return s.append(cmd);
     }, state);
   }
 

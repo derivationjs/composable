@@ -11,13 +11,13 @@ export class LogChangeInput<T> extends ReactiveValue<Array<LogCommand<T>>> {
   }
 
   push(item: T): void {
-    this.pending.push({ type: "append", value: item });
+    this.pending.push(item);
     this.graph.markDirtyNextStep(this);
   }
 
   pushAll(items: Iterable<T>): void {
     for (const item of items) {
-      this.pending.push({ type: "append", value: item });
+      this.pending.push(item);
     }
     if (this.pending.length > 0) {
       this.graph.markDirtyNextStep(this);
