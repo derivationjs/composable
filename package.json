@@ -3,7 +3,7 @@
   "author": "Daniel Waterworth",
   "license": "MIT",
   "description": "Experimental library for expressive, react data flows.",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "type": "module",
   "exports": {
     ".": "./dist/index.js"
@@ -12,14 +12,19 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "test": "vitest",
+    "lint": "eslint src",
     "prepare": "npm run build"
   },
   "dependencies": {
-    "derivation": "^0.3.0",
+    "derivation": "^0.3.5",
     "immutable": "^5.1.4"
   },
   "devDependencies": {
     "@types/node": "^25",
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
+    "eslint": "^9.39.2",
+    "eslint-plugin-import": "^2.32.0",
     "typescript": "^5",
     "vitest": "^4.0.18"
   }

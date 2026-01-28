@@ -1,6 +1,6 @@
 import { Graph, ReactiveValue } from "derivation";
 import { Map as IMap } from "immutable";
-import { WeakCache } from "./weak-cache";
+import { WeakCache } from "./weak-cache.js";
 
 class SelectStream<V> extends ReactiveValue<V[]> {
   private _value: V[];
