@@ -1,0 +1,18 @@
+# source files
+src/
+
+# TypeScript config
+tsconfig.json
+
+# tests
+*.test.ts
+*.spec.ts
+
+# development files
+.gitignore
+
+# TypeScript build info
+*.tsbuildinfo
+
+# test / coverage output
+coverage/
