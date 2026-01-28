@@ -5,7 +5,7 @@ import { Log } from "../log.js";
 import { ZSet } from "../z-set.js";
 import { LogOperations } from "../log-operations.js";
 import { LogChangeInput } from "../log-change-input.js";
-import { foldLog, lengthLog, unionLogOfZSets } from "../log-reactive.js";
+import { foldLog, lengthLog, mapLog, unionLogOfZSets } from "../log-reactive.js";
 
 describe("Log Reactive Operations", () => {
   it("foldLog accumulates log entries", () => {
@@ -43,6 +43,75 @@ describe("Log Reactive Operations", () => {
     input.pushAll(["b", "c", "d"]);
     c.step();
     expect(length.value).toBe(4);
+  });
+
+  it("mapLog transforms log entries", () => {
+    const c = new Graph();
+    const input = new LogChangeInput<number>(c);
+    const rlog = Reactive.create(c, new LogOperations<number>(), input, new Log<number>());
+
+    const doubled = mapLog(c, rlog, (x) => x * 2);
+
+    expect(doubled.snapshot.length).toBe(0);
+
+    input.push(5);
+    c.step();
+    expect(doubled.snapshot.length).toBe(1);
+    expect(doubled.snapshot.get(0)).toBe(10);
+
+    input.pushAll([3, 7]);
+    c.step();
+    expect(doubled.snapshot.length).toBe(3);
+    expect(doubled.snapshot.get(0)).toBe(10);
+    expect(doubled.snapshot.get(1)).toBe(6);
+    expect(doubled.snapshot.get(2)).toBe(14);
+  });
+
+  it("mapLog handles initial log entries", () => {
+    const c = new Graph();
+
+    // Create initial log with some entries
+    const initialLog = new Log<string>()
+      .append("hello")
+      .append("world");
+
+    const input = new LogChangeInput<string>(c);
+    const rlog = Reactive.create(c, new LogOperations<string>(), input, initialLog);
+
+    const uppercased = mapLog(c, rlog, (s) => s.toUpperCase());
+
+    // Initial snapshot should have mapped entries
+    expect(uppercased.snapshot.length).toBe(2);
+    expect(uppercased.snapshot.get(0)).toBe("HELLO");
+    expect(uppercased.snapshot.get(1)).toBe("WORLD");
+
+    // Add more entries
+    input.push("foo");
+    c.step();
+
+    expect(uppercased.snapshot.length).toBe(3);
+    expect(uppercased.snapshot.get(2)).toBe("FOO");
+  });
+
+  it("mapLog with complex transformations", () => {
+    const c = new Graph();
+    const input = new LogChangeInput<{ id: number; value: string }>(c);
+    const rlog = Reactive.create(
+      c,
+      new LogOperations<{ id: number; value: string }>(),
+      input,
+      new Log<{ id: number; value: string }>()
+    );
+
+    const extracted = mapLog(c, rlog, (obj) => obj.value);
+
+    input.push({ id: 1, value: "apple" });
+    input.push({ id: 2, value: "banana" });
+    c.step();
+
+    expect(extracted.snapshot.length).toBe(2);
+    expect(extracted.snapshot.get(0)).toBe("apple");
+    expect(extracted.snapshot.get(1)).toBe("banana");
   });
 
   it("unionLogOfZSets flattens empty log", () => {

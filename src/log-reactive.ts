@@ -1,7 +1,7 @@
 import { Graph, ReactiveValue } from "derivation";
 import { Reactive } from "./reactive.js";
 import { Log } from "./log.js";
-import type { LogCommand } from "./log-operations.js";
+import { LogOperations, type LogCommand } from "./log-operations.js";
 import { ZSet } from "./z-set.js";
 import { ZSetOperations } from "./z-set-operations.js";
 
@@ -45,6 +45,31 @@ export function lengthLog<T>(
     const commands = command as Array<LogCommand<T>>;
     return length + commands.length;
   });
+}
+
+/**
+ * Map over a reactive Log, transforming each entry.
+ * Uses incremental computation to only map new entries.
+ */
+export function mapLog<T, U>(
+  graph: Graph,
+  source: Reactive<Log<T>>,
+  func: (item: T) => U,
+): Reactive<Log<U>> {
+  const operations = new LogOperations<U>();
+
+  // When log entries are added, map the new entries
+  const changes = source.changes.map((cmd) => {
+    const commands = cmd as Array<LogCommand<T>>;
+    return commands.map(func);
+  });
+
+  // Initial snapshot: map all entries in the initial log
+  const initialSnapshot = new Log<U>(
+    source.previousSnapshot.toArray().map(func)
+  );
+
+  return Reactive.create(graph, operations, changes, initialSnapshot);
 }
 
 /**

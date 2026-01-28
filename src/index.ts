@@ -40,7 +40,7 @@ export {
 } from "./z-map-reactive.js";
 
 // Log reactive operations
-export { foldLog, lengthLog, unionLogOfZSets } from "./log-reactive.js";
+export { foldLog, lengthLog, mapLog, unionLogOfZSets } from "./log-reactive.js";
 
 // List reactive operations
 export { sequenceList, mapList } from "./list-reactive.js";
