@@ -5,15 +5,22 @@
   "description": "Experimental library for expressive, react data flows.",
   "version": "0.3.6",
   "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
   },
   "scripts": {
-    "build": "tsc",
-    "build:watch": "tsc --watch",
+    "build": "tsup",
+    "build:watch": "tsup --watch",
     "test": "vitest",
     "lint": "eslint src",
-    "prepare": "npm run build"
+    "prepare": "tsup"
   },
   "dependencies": {
     "derivation": "^0.3.5",
@@ -25,6 +32,7 @@
     "@typescript-eslint/parser": "^8.54.0",
     "eslint": "^9.39.2",
     "eslint-plugin-import": "^2.32.0",
+    "tsup": "^8.5.1",
     "typescript": "^5",
     "vitest": "^4.0.18"
   }
