@@ -176,3 +176,25 @@ export function differenceZMap<K, V>(
 
   return Reactive.create(graph, operations, changes, initialSnapshot);
 }
+
+/**
+ * Extract a specific key from a reactive ZMap, producing a reactive ZSet.
+ * Returns the ZSet of values associated with the given key.
+ */
+export function getKeyZMap<K, V>(
+  graph: Graph,
+  source: Reactive<ZMap<K, V>>,
+  key: K,
+): Reactive<ZSet<V>> {
+  const operations = new ZSetOperations<V>();
+
+  // Filter changes to only include the specified key
+  const changes = source.changes.map((cmd) => {
+    const zmap = cmd as ZMap<K, V>;
+    return zmap.get(key);
+  });
+
+  const initialSnapshot = (source.previousSnapshot as ZMap<K, V>).get(key);
+
+  return Reactive.create(graph, operations, changes, initialSnapshot);
+}

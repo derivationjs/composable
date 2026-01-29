@@ -33,6 +33,7 @@ export {
   joinZMap,
   mapValuesZMap,
   flattenZMap,
+  getKeyZMap,
   filterZMap as filterZMapReactive,
   unionZMap as unionZMapReactive,
   intersectionZMap as intersectionZMapReactive,
