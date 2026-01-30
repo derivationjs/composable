@@ -17,7 +17,7 @@ describe("mapList", () => {
   beforeEach(() => {
     graph = new Graph();
     changes = inputValue(graph, [] as ListCommand<number>[]);
-    list = Reactive.create(
+    list = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -31,7 +31,12 @@ describe("mapList", () => {
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
       );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return Reactive.create<number>(
+        graph,
+        numberOps,
+        doubledChanges,
+        doubled.value,
+      );
     });
     graph.step();
 
@@ -40,7 +45,7 @@ describe("mapList", () => {
 
   it("should map initial values", () => {
     const initialList = List([1, 2, 3]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -52,7 +57,12 @@ describe("mapList", () => {
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
       );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return Reactive.create<number>(
+        graph,
+        numberOps,
+        doubledChanges,
+        doubled.value,
+      );
     });
     graph.step();
 
@@ -65,7 +75,12 @@ describe("mapList", () => {
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
       );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return Reactive.create<number>(
+        graph,
+        numberOps,
+        doubledChanges,
+        doubled.value,
+      );
     });
     graph.step();
 
@@ -81,7 +96,12 @@ describe("mapList", () => {
       const doubledChanges = rx.changes.map((cmd) =>
         cmd !== null ? (cmd as number) * 2 : null,
       );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return Reactive.create<number>(
+        graph,
+        numberOps,
+        doubledChanges,
+        doubled.value,
+      );
     });
     graph.step();
 
@@ -97,7 +117,7 @@ describe("mapList", () => {
 
   it("should handle update", () => {
     const initialList = List([1, 2, 3]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -124,7 +144,7 @@ describe("mapList", () => {
 
   it("should handle remove", () => {
     const initialList = List([1, 2, 3]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -148,7 +168,7 @@ describe("mapList", () => {
 
   it("should handle move", () => {
     const initialList = List([1, 2, 3]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -173,7 +193,7 @@ describe("mapList", () => {
 
   it("should handle clear", () => {
     const initialList = List([1, 2, 3]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -197,7 +217,7 @@ describe("mapList", () => {
 
   it("should preserve item identity across structural changes", () => {
     const initialList = List([1, 2, 3]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -228,7 +248,7 @@ describe("mapList", () => {
 
   it("should handle remove and update in the same batch correctly", () => {
     const initialList = List([1, 2, 3]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -260,7 +280,7 @@ describe("mapList", () => {
     // through the mapped reactives. The bug is that in apply(), ry.snapshot
     // might be stale if ry.materialized hasn't been evaluated yet.
     const initialList = List([1, 2, 3]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -300,7 +320,7 @@ describe("mapList", () => {
     // This tests a mapping function that computes Y from X in a more
     // complex way, where the bug would be more apparent.
     const initialList = List([10, 20, 30]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -329,7 +349,7 @@ describe("mapList", () => {
 
   it("should only call f on insert, not on update or other changes", () => {
     const initialList = List([1, 2, 3]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,

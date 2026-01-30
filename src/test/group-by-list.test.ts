@@ -8,13 +8,7 @@ import { Operations } from "../operations.js";
 import { PrimitiveOperations } from "../primitive-operations.js";
 
 // Simple operations for number items
-const numberOps: Operations<number> = {
-  emptyCommand: () => null,
-  isEmpty: (cmd: unknown) => cmd === null,
-  mergeCommands: (a: unknown, b: unknown) => b ?? a,
-  apply: (state: number, cmd: unknown) =>
-    cmd !== null ? (cmd as number) : state,
-};
+const numberOps = new PrimitiveOperations<number>();
 
 // Simple operations for string items
 const stringOps = new PrimitiveOperations<string>();
@@ -27,7 +21,7 @@ describe("groupByList", () => {
   beforeEach(() => {
     graph = new Graph();
     changes = inputValue(graph, [] as ListCommand<number>[]);
-    list = Reactive.create(
+    list = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -39,13 +33,9 @@ describe("groupByList", () => {
     const grouped = groupByList<number, string>(graph, list, (rx) => {
       const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
       const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null
-          ? (cmd as number) % 2 === 0
-            ? "even"
-            : "odd"
-          : null,
+        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
       );
-      return Reactive.create(graph, stringOps, keyChanges, key.value);
+      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
     });
     graph.step();
 
@@ -54,7 +44,7 @@ describe("groupByList", () => {
 
   it("should group initial values by even/odd", () => {
     const initialList = List([1, 2, 3, 4, 5]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -64,13 +54,9 @@ describe("groupByList", () => {
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
       const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
       const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null
-          ? (cmd as number) % 2 === 0
-            ? "even"
-            : "odd"
-          : null,
+        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
       );
-      return Reactive.create(graph, stringOps, keyChanges, key.value);
+      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
     });
     graph.step();
 
@@ -80,7 +66,7 @@ describe("groupByList", () => {
 
   it("should handle inserting items into groups", () => {
     const initialList = List([1, 2]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -90,13 +76,9 @@ describe("groupByList", () => {
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
       const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
       const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null
-          ? (cmd as number) % 2 === 0
-            ? "even"
-            : "odd"
-          : null,
+        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
       );
-      return Reactive.create(graph, stringOps, keyChanges, key.value);
+      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
     });
     graph.step();
 
@@ -120,7 +102,7 @@ describe("groupByList", () => {
 
   it("should handle removing items from groups", () => {
     const initialList = List([1, 2, 3, 4]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -130,13 +112,9 @@ describe("groupByList", () => {
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
       const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
       const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null
-          ? (cmd as number) % 2 === 0
-            ? "even"
-            : "odd"
-          : null,
+        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
       );
-      return Reactive.create(graph, stringOps, keyChanges, key.value);
+      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
     });
     graph.step();
 
@@ -160,7 +138,7 @@ describe("groupByList", () => {
 
   it("should handle updating items within same group", () => {
     const initialList = List([2, 4]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -170,13 +148,9 @@ describe("groupByList", () => {
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
       const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
       const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null
-          ? (cmd as number) % 2 === 0
-            ? "even"
-            : "odd"
-          : null,
+        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
       );
-      return Reactive.create(graph, stringOps, keyChanges, key.value);
+      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
     });
     graph.step();
 
@@ -191,7 +165,7 @@ describe("groupByList", () => {
 
   it("should handle items moving between groups", () => {
     const initialList = List([2, 4]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -201,13 +175,9 @@ describe("groupByList", () => {
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
       const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
       const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null
-          ? (cmd as number) % 2 === 0
-            ? "even"
-            : "odd"
-          : null,
+        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
       );
-      return Reactive.create(graph, stringOps, keyChanges, key.value);
+      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
     });
     graph.step();
 
@@ -224,7 +194,7 @@ describe("groupByList", () => {
 
   it("should handle clear command", () => {
     const initialList = List([1, 2, 3, 4]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -234,13 +204,9 @@ describe("groupByList", () => {
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
       const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
       const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null
-          ? (cmd as number) % 2 === 0
-            ? "even"
-            : "odd"
-          : null,
+        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
       );
-      return Reactive.create(graph, stringOps, keyChanges, key.value);
+      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
     });
     graph.step();
 
@@ -256,7 +222,7 @@ describe("groupByList", () => {
     // Start with [1, 3]
     // Grouped: odd=[1, 3]
     const initialList = List([1, 3]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -266,13 +232,9 @@ describe("groupByList", () => {
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
       const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
       const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null
-          ? (cmd as number) % 2 === 0
-            ? "even"
-            : "odd"
-          : null,
+        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
       );
-      return Reactive.create(graph, stringOps, keyChanges, key.value);
+      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
     });
     graph.step();
 
@@ -310,7 +272,7 @@ describe("groupByList", () => {
     // Source list: [1, 3, 5, 2, 4]
     // Grouped: odd=[1, 3, 5], even=[2, 4]
     const initialList = List([1, 3, 5, 2, 4]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -320,13 +282,9 @@ describe("groupByList", () => {
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
       const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
       const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null
-          ? (cmd as number) % 2 === 0
-            ? "even"
-            : "odd"
-          : null,
+        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
       );
-      return Reactive.create(graph, stringOps, keyChanges, key.value);
+      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
     });
     graph.step();
 
@@ -358,7 +316,7 @@ describe("groupByList", () => {
     // Source list: [1, 3, 5, 2, 4]
     // Grouped: odd=[1, 3, 5], even=[2, 4]
     const initialList = List([1, 3, 5, 2, 4]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -368,13 +326,9 @@ describe("groupByList", () => {
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
       const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
       const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null
-          ? (cmd as number) % 2 === 0
-            ? "even"
-            : "odd"
-          : null,
+        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
       );
-      return Reactive.create(graph, stringOps, keyChanges, key.value);
+      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
     });
     graph.step();
 

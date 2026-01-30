@@ -1,12 +1,12 @@
 import { List } from "immutable";
-import { OperationsBase, Operations, asBase } from "./operations.js";
+import { OperationsBase, Operations, asBase, Changes } from "./operations.js";
 
 /**
  * Commands for manipulating an Immutable.List
  */
 export type ListCommand<T> =
   | { type: "insert"; index: number; value: T }
-  | { type: "update"; index: number; command: unknown }
+  | { type: "update"; index: number; command: Changes<T> }
   | { type: "remove"; index: number }
   | { type: "move"; from: number; to: number }
   | { type: "clear" };
@@ -14,20 +14,16 @@ export type ListCommand<T> =
 /**
  * Operations implementation for Immutable.List
  */
-export class ListOperations<T> implements OperationsBase<List<T>> {
+export class ListOperations<T>
+  implements OperationsBase<List<T>, ListCommand<T>[]>
+{
   constructor(private itemOps: Operations<T>) {}
 
   get itemOperations(): Operations<T> {
     return this.itemOps;
   }
 
-  unsafeUpdateItemOperations(itemOps: Operations<T>): void {
-    this.itemOps = itemOps;
-  }
-
-  apply(state: List<T>, command: unknown): List<T> {
-    const commands = command as Array<ListCommand<T>>;
-
+  apply(state: List<T>, commands: ListCommand<T>[]): List<T> {
     return commands.reduce((s, cmd) => {
       switch (cmd.type) {
         case "insert":
@@ -53,18 +49,26 @@ export class ListOperations<T> implements OperationsBase<List<T>> {
     }, state);
   }
 
-  emptyCommand(): unknown {
+  emptyCommand(): ListCommand<T>[] {
     return [];
   }
 
-  isEmpty(command: unknown): boolean {
-    const commands = command as Array<ListCommand<T>>;
-    return commands.length === 0;
+  isEmpty(command: ListCommand<T>[]): boolean {
+    return command.length === 0;
   }
 
-  mergeCommands(firstCommand: unknown, secondCommand: unknown): unknown {
-    const firstCommands = firstCommand as Array<ListCommand<T>>;
-    const secondCommands = secondCommand as Array<ListCommand<T>>;
-    return [...firstCommands, ...secondCommands];
+  mergeCommands(
+    firstCommand: ListCommand<T>[],
+    secondCommand: ListCommand<T>[],
+  ): ListCommand<T>[] {
+    return [...firstCommand, ...secondCommand];
+  }
+
+  replaceCommand(value: List<T>): ListCommand<T>[] {
+    const cmds: ListCommand<T>[] = [{ type: "clear" }];
+    value.forEach((v, i) => {
+      cmds.push({ type: "insert", index: i, value: v });
+    });
+    return cmds;
   }
 }

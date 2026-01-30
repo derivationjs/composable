@@ -2,7 +2,8 @@ import { List } from "immutable";
 import { Graph, ReactiveValue } from "derivation";
 import { Reactive } from "./reactive.js";
 import { Operations, asBase } from "./operations.js";
-import { tagWithIds, ID } from "./tag-with-ids.js";
+import { decomposeList, ID } from "./decompose-list.js";
+import { MapCommand } from "./map-operations.js";
 import { groupBy } from "./group-by.js";
 import { TwoThreeTree, Monoid } from "./two-three-tree.js";
 import { ListCommand, ListOperations } from "./list-operations.js";
@@ -35,11 +36,22 @@ export function filterList<X>(
 ): Reactive<List<X>> {
   // Extract X operations from the list's operations
   const operations = list.operations.itemOperations;
-  const { structure, updates, initialValues } = tagWithIds(list);
+  const [structure, map] = decomposeList(graph, list);
+
+  // Extract per-item update events from map changes
+  const updateEvents = map.changes.map((rawCmds) => {
+    const cmds = rawCmds as MapCommand<ID, X>[];
+    return cmds
+      .filter(
+        (c): c is Extract<MapCommand<ID, X>, { type: "update" }> =>
+          c.type === "update",
+      )
+      .map((c) => ({ id: c.key, command: c.command }));
+  });
 
   // Group updates by ID
   const groupedUpdates = groupBy(
-    updates,
+    updateEvents,
     (u) => u.id,
     (u) => u.command,
   );
@@ -68,7 +80,7 @@ export function filterList<X>(
     let predRx = predicateReactives.get(id);
 
     if (!rx || !predRx) {
-      const initialValue = initialValues.get(id)!;
+      const initialValue = map.snapshot.get(id)!;
       const itemChanges = groupedUpdates
         .select(id)
         .map((cmds) =>
@@ -111,7 +123,7 @@ export function filterList<X>(
   }
 
   const allChanges = structure.changes
-    .zip(updates, (structCmds, upds) => ({
+    .zip(updateEvents, (structCmds, upds) => ({
       structCmds: structCmds as ListCommand<ID>[],
       upds,
     }))
@@ -286,5 +298,5 @@ export function filterList<X>(
 
   const listOps = new ListOperations(operations);
 
-  return Reactive.create(graph, listOps, allChanges, initialFiltered);
+  return Reactive.create<List<X>>(graph, listOps, allChanges, initialFiltered);
 }

@@ -1,9 +1,9 @@
 import { Graph, ReactiveValue } from "derivation";
 import { Reactive } from "./reactive.js";
+import { Changes } from "./operations.js";
 import { Log } from "./log.js";
 import { LogOperations, type LogCommand } from "./log-operations.js";
-import { ZSet } from "./z-set.js";
-import { ZSetOperations } from "./z-set-operations.js";
+import { Operations, asBase } from "./operations.js";
 
 /**
  * Create a reactive fold operation over a Log.
@@ -66,33 +66,86 @@ export function mapLog<T, U>(
 
   // Initial snapshot: map all entries in the initial log
   const initialSnapshot = new Log<U>(
-    source.previousSnapshot.toArray().map(func)
+    source.previousSnapshot.toArray().map(func),
   );
+
+  return Reactive.create<Log<U>>(graph, operations, changes, initialSnapshot);
+}
+
+/**
+ * Apply a log of commands to produce a Reactive value.
+ * Each log entry is a command that gets applied using the provided operations.
+ * Uses incremental computation to apply only new commands.
+ */
+export function applyLog<T>(
+  graph: Graph,
+  source: Reactive<Log<Changes<T>>>,
+  operations: Operations<T>,
+  initial: T,
+): Reactive<T> {
+  // Apply all historical commands to build initial state
+  const initialSnapshot = source.previousSnapshot
+    .toArray()
+    .reduce(
+      (state: T, command: Changes<T>) =>
+        asBase(operations).apply(state, command),
+      initial,
+    );
+
+  // When log entries are added, merge them into a single command
+  const changes = source.changes.map((cmd) => {
+    const commands = cmd;
+    return commands.reduce(
+      (acc: Changes<T>, command: Changes<T>) =>
+        asBase(operations).mergeCommands(acc, command),
+      asBase(operations).emptyCommand(),
+    );
+  });
 
   return Reactive.create(graph, operations, changes, initialSnapshot);
 }
 
-/**
- * Flatten a reactive Log of ZSets into a single reactive ZSet.
- * Unions all ZSets in the log together.
- * Uses incremental computation to union only new entries.
- */
-export function unionLogOfZSets<T>(
+export function applyLogSequential<T, X>(
   graph: Graph,
-  source: Reactive<Log<ZSet<T>>>,
-): Reactive<ZSet<T>> {
-  const operations = new ZSetOperations<T>();
-
-  // When log entries are added, union all the new ZSets together
-  const changes = source.changes.map((cmd) => {
-    const commands = cmd as Array<ZSet<T>>;
-    return commands.reduce((acc, zset) => acc.union(zset), new ZSet<T>());
-  });
-
-  // Initial snapshot: union all ZSets in the initial log
+  source: Reactive<Log<X>>,
+  operations: Operations<T>,
+  initial: T,
+  f: (state: T, event: X) => Changes<T>,
+): Reactive<T> {
+  // Process all initial events to build initial snapshot
   const initialSnapshot = source.previousSnapshot
     .toArray()
-    .reduce((acc, zset) => acc.union(zset), new ZSet<T>());
+    .reduce((state, event) => {
+      const command = f(state, event);
+      return asBase(operations).apply(state, command);
+    }, initial);
+
+  // Use accumulate to track state and generate commands
+  const accumulated = source.changes.accumulate(
+    {
+      state: initialSnapshot,
+      command: asBase(operations).emptyCommand(),
+    },
+    (acc, cmd) => {
+      const events = cmd as Array<X>;
+
+      return events.reduce(
+        (current, event) => {
+          const command = f(current.state, event);
+          const mergedCommand = asBase(operations).mergeCommands(
+            current.command,
+            command,
+          );
+          const state = asBase(operations).apply(current.state, command);
+          return { state, command: mergedCommand };
+        },
+        { state: acc.state, command: asBase(operations).emptyCommand() },
+      );
+    },
+  );
+
+  // Extract just the command from the accumulated state
+  const changes = accumulated.map((acc) => acc.command);
 
   return Reactive.create(graph, operations, changes, initialSnapshot);
 }

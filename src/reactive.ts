@@ -1,5 +1,5 @@
 import { ReactiveValue, Graph } from "derivation";
-import { Operations, asBase } from "./operations.js";
+import { Operations, Changes, asBase } from "./operations.js";
 
 /**
  * Reactive wraps an immutable data structure T and provides
@@ -8,13 +8,13 @@ import { Operations, asBase } from "./operations.js";
 export class Reactive<T> {
   readonly materialized: ReactiveValue<T>;
   readonly previousMaterialized: ReactiveValue<T>;
-  readonly changes: ReactiveValue<unknown>;
+  readonly changes: ReactiveValue<Changes<T>>;
   readonly operations: Operations<T>;
 
   constructor(
     materialized: ReactiveValue<T>,
     previousMaterialized: ReactiveValue<T>,
-    changes: ReactiveValue<unknown>,
+    changes: ReactiveValue<Changes<T>>,
     operations: Operations<T>,
   ) {
     this.materialized = materialized;
@@ -38,22 +38,30 @@ export class Reactive<T> {
   }
 
   /**
-   * Create a new Reactive from an Operations instance and a command stream
+   * Create a new Reactive from an Operations instance and a command stream.
+   * Uses a separate C type parameter so that callers inside generic functions
+   * don't need the Changes<T> conditional type to resolve.
    */
   static create<T>(
     graph: Graph,
     operations: Operations<T>,
-    changes: ReactiveValue<unknown>,
+    changes: ReactiveValue<Changes<T>>,
     initial: T,
   ): Reactive<T> {
+    const ops = asBase(operations);
     // Accumulate commands into materialized state
     const materialized = changes.accumulate(initial, (state, command) => {
-      return asBase(operations).apply(state, command);
+      return ops.apply(state, command);
     });
 
     // Track previous materialized state
     const previousMaterialized = materialized.delay(initial);
 
-    return new Reactive(materialized, previousMaterialized, changes, operations);
+    return new Reactive(
+      materialized,
+      previousMaterialized,
+      changes,
+      operations,
+    );
   }
 }

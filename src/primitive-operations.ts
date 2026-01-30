@@ -1,27 +1,31 @@
 import { OperationsBase } from "./operations.js";
 
 export class PrimitiveOperations<T extends NonNullable<unknown>>
-  implements OperationsBase<T>
+  implements OperationsBase<T, T | null>
 {
   constructor() {}
 
-  apply(state: T, command: unknown): T {
+  apply(state: T, command: T | null): T {
     if (command !== null) {
-      return command as T;
+      return command;
     } else {
       return state;
     }
   }
 
-  emptyCommand(): unknown {
+  emptyCommand(): T | null {
     return null;
   }
 
-  isEmpty(command: unknown): boolean {
+  isEmpty(command: T | null): boolean {
     return command === null;
   }
 
-  mergeCommands(firstCommand: unknown, secondCommand: unknown): unknown {
+  mergeCommands(firstCommand: T | null, secondCommand: T | null): T | null {
     return secondCommand;
+  }
+
+  replaceCommand(value: T): T | null {
+    return value;
   }
 }

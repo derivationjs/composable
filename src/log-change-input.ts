@@ -1,39 +1,22 @@
-import { Graph, ReactiveValue } from "derivation";
-import type { LogCommand } from "./log-operations.js";
+import { Graph } from "derivation";
+import { Log } from "./log.js";
+import { LogOperations, type LogCommand } from "./log-operations.js";
+import { ChangeInput } from "./change-input.js";
 
-export class LogChangeInput<T> extends ReactiveValue<Array<LogCommand<T>>> {
-  private current: Array<LogCommand<T>> = [];
-  private pending: Array<LogCommand<T>> = [];
-
-  constructor(public readonly graph: Graph) {
-    super();
-    graph.addValue(this);
+export class LogChangeInput<T> extends ChangeInput<Log<T>> {
+  constructor(graph: Graph) {
+    super(graph, new LogOperations<T>());
   }
 
-  push(item: T): void {
-    this.pending.push(item);
-    this.graph.markDirtyNextStep(this);
+  add(item: T): void {
+    super.push([item]);
   }
 
-  pushAll(items: Iterable<T>): void {
-    for (const item of items) {
-      this.pending.push(item);
-    }
-    if (this.pending.length > 0) {
-      this.graph.markDirtyNextStep(this);
-    }
+  addAll(items: Iterable<T>): void {
+    super.push([...items]);
   }
 
-  step(): void {
-    this.current = this.pending;
-    this.pending = [];
-    if (this.current.length > 0) {
-      this.invalidateDependents();
-    }
-    this.graph.markDirtyNextStep(this);
-  }
-
-  get value(): Array<LogCommand<T>> {
-    return this.current;
+  override get value(): Array<LogCommand<T>> {
+    return super.value as Array<LogCommand<T>>;
   }
 }

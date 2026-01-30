@@ -1,10 +1,9 @@
 import { Map as IMap } from "immutable";
 import { Graph, ReactiveValue, constantValue } from "derivation";
 import { Reactive } from "./reactive.js";
-import { Operations, asBase, OperationsBase } from "./operations.js";
+import { Operations, asBase, Changes } from "./operations.js";
 import { MapCommand, MapOperations } from "./map-operations.js";
-import { groupBy } from "./group-by.js";
-import { PrimitiveOperations } from "./primitive-operations.js";
+import { forwardingProxy } from "./forwarding-proxy.js";
 
 /**
  * Converts a Map of reactive values into a reactive Map.
@@ -37,87 +36,202 @@ export function mapMap<K, X, Y>(
   map: Reactive<IMap<K, X>>,
   f: (x: Reactive<X>, key: K) => Reactive<Y>,
 ): Reactive<IMap<K, Y>> {
-  // Extract X operations from the map's operations
   const valueOperations = map.operations.valueOperations;
-  // Group updates by key
-  const groupedUpdates = groupBy(
-    map.changes.map((cmds) => {
-      const commands = cmds as MapCommand<K, X>[];
-      return commands
-        .filter((cmd): cmd is MapCommand<K, X> & { type: "update" } => cmd.type === "update")
-        .map((cmd) => ({ key: cmd.key, command: cmd.command }));
-    }),
-    (u) => u.key,
-    (u) => u.command,
-  );
+  const valueOpsBase = asBase(valueOperations);
 
-  // Map to store Reactive<Y> for each key
-  const yReactives = new Map<K, Reactive<Y>>();
-
-  // Create MapOperations with undefined - we'll populate it lazily from first Y reactive
-  const yMapOps = new MapOperations<K, Y>(undefined as unknown as Operations<Y>);
-
-  // Helper to get or create Reactive<Y> for a key
-  function getOrCreateY(key: K, initialValue: X): Reactive<Y> {
-    let ry = yReactives.get(key);
-    if (!ry) {
-      const itemChanges = groupedUpdates.select(key).map((cmds) =>
-        cmds.reduce(
-          (acc, cmd) => asBase(valueOperations).mergeCommands(acc, cmd),
-          asBase(valueOperations).emptyCommand(),
-        ),
-      );
-      const rx = Reactive.create(graph, valueOperations, itemChanges, initialValue);
-      ry = f(rx, key);
-      // Capture Y operations from the first reactive we create
-      yMapOps.unsafeUpdateValueOperations(ry.operations);
-      yReactives.set(key, ry);
-    }
-    return ry;
-  }
-
-  // Create Reactive<Y> for all initial keys
-  for (const [key, value] of map.snapshot) {
-    getOrCreateY(key, value);
-  }
-
-  // Transform map changes to Y changes
-  const yChanges: ReactiveValue<MapCommand<K, Y>[]> = map.changes.map((rawCmds) => {
-    const cmds = rawCmds as MapCommand<K, X>[];
-    const yCmds: MapCommand<K, Y>[] = [];
+  const updateCommandForKey = (
+    cmds: MapCommand<K, X>[],
+    prevHasKey: boolean,
+    key: K,
+  ): Changes<X> => {
+    let present = prevHasKey;
+    let merged = valueOpsBase.emptyCommand();
 
     for (const cmd of cmds) {
       switch (cmd.type) {
-        case "set": {
-          const ry = getOrCreateY(cmd.key, cmd.value);
-          yCmds.push({ type: "set", key: cmd.key, value: ry.snapshot });
-          break;
-        }
-        case "update": {
-          const ry = yReactives.get(cmd.key);
-          if (ry) {
-            yCmds.push({ type: "update", key: cmd.key, command: ry.changes.value });
+        case "add": {
+          if (cmd.key === key) {
+            present = true;
+            merged = valueOpsBase.emptyCommand();
           }
           break;
         }
         case "delete": {
-          yCmds.push({ type: "delete", key: cmd.key });
+          if (cmd.key === key) {
+            present = false;
+            merged = valueOpsBase.emptyCommand();
+          }
           break;
         }
         case "clear": {
-          yCmds.push({ type: "clear" });
+          present = false;
+          merged = valueOpsBase.emptyCommand();
+          break;
+        }
+        case "update": {
+          if (cmd.key === key && present) {
+            merged = valueOpsBase.mergeCommands(merged, cmd.command);
+          }
           break;
         }
       }
     }
 
-    return yCmds;
-  });
+    return present ? merged : valueOpsBase.emptyCommand();
+  };
 
-  // Build initial Y map - use map.snapshot to preserve key type
-  const initialYMap: IMap<K, Y> = map.snapshot.map((_, key) =>
-    yReactives.get(key)!.snapshot
+  // Create a forwarding proxy for Y operations - we'll set the real target lazily from first Y reactive
+  const { proxy: yValueOpsProxy, setTarget: setYValueOps } = forwardingProxy(
+    {} as Operations<Y>,
+  );
+  const yMapOps = new MapOperations<K, Y>(yValueOpsProxy);
+
+  function ensureReactive(
+    reactives: IMap<K, Reactive<Y>>,
+    key: K,
+    initialValue: X,
+  ): { reactives: IMap<K, Reactive<Y>>; reactive: Reactive<Y> } {
+    const existing = reactives.get(key);
+    if (existing) {
+      return { reactives, reactive: existing };
+    }
+
+    const itemChanges = map.changes.zip(
+      map.previousMaterialized,
+      (cmds, prevMap) => updateCommandForKey(cmds, prevMap.has(key), key),
+    );
+    const rx = Reactive.create(
+      graph,
+      valueOperations,
+      itemChanges,
+      initialValue,
+    );
+    const reactive = f(rx, key);
+    setYValueOps(reactive.operations);
+    return { reactives: reactives.set(key, reactive), reactive };
+  }
+
+  const initialReactives = map.snapshot.reduce<IMap<K, Reactive<Y>>>(
+    (cache, value, key) => ensureReactive(cache, key, value).reactives,
+    IMap<K, Reactive<Y>>(),
   );
 
-  return Reactive.create(graph, yMapOps, yChanges, initialYMap);
+  // Track the Reactive<Y> instances that correspond to each key. This runs
+  // before we emit commands so the reactive chains for dynamically added keys
+  // are created (and thus stepped) before we try to read their changes.
+  const reactivesState: ReactiveValue<IMap<K, Reactive<Y>>> =
+    map.changes.accumulate(initialReactives, (reactives, cmds) => {
+      return cmds.reduce<IMap<K, Reactive<Y>>>((current, cmd) => {
+        switch (cmd.type) {
+          case "add": {
+            return ensureReactive(current, cmd.key, cmd.value).reactives;
+          }
+          case "delete": {
+            return current.delete(cmd.key);
+          }
+          case "clear": {
+            return IMap<K, Reactive<Y>>();
+          }
+          default:
+            return current;
+        }
+      }, reactives);
+    });
+
+  const yChanges: ReactiveValue<MapCommand<K, Y>[]> = map.changes.zip3(
+    reactivesState,
+    map.previousMaterialized,
+    map.materialized,
+    (cmds, reactives, prevMap, nextMap) => {
+      const yCmds: MapCommand<K, Y>[] = [];
+
+      let effectiveCmds = cmds;
+      let startMap = prevMap;
+      let lastClearIndex = -1;
+      for (let i = 0; i < cmds.length; i++) {
+        if (cmds[i].type === "clear") {
+          lastClearIndex = i;
+        }
+      }
+
+      if (lastClearIndex !== -1) {
+        yCmds.push({ type: "clear" });
+        effectiveCmds = cmds.slice(lastClearIndex + 1);
+        startMap = IMap<K, X>();
+      }
+
+      const keyOrder: K[] = [];
+      const summaries = new Map<
+        K,
+        { hasAdd: boolean; hasDelete: boolean; hasUpdate: boolean }
+      >();
+
+      for (const cmd of effectiveCmds) {
+        if (cmd.type === "add" || cmd.type === "update" || cmd.type === "delete") {
+          const key = cmd.key;
+          let summary = summaries.get(key);
+          if (!summary) {
+            summary = { hasAdd: false, hasDelete: false, hasUpdate: false };
+            summaries.set(key, summary);
+            keyOrder.push(key);
+          }
+          if (cmd.type === "add") {
+            summary.hasAdd = true;
+          } else if (cmd.type === "delete") {
+            summary.hasDelete = true;
+          } else {
+            summary.hasUpdate = true;
+          }
+        }
+      }
+
+      for (const key of keyOrder) {
+        const summary = summaries.get(key)!;
+        const startHasKey = startMap.has(key);
+        const endHasKey = nextMap.has(key);
+
+        if (!endHasKey) {
+          yCmds.push({ type: "delete", key });
+          continue;
+        }
+
+        if (summary.hasDelete) {
+          yCmds.push({ type: "delete", key });
+          const reactive = reactives.get(key);
+          if (reactive) {
+            yCmds.push({ type: "add", key, value: reactive.snapshot });
+          }
+          continue;
+        }
+
+        if (!startHasKey || summary.hasAdd) {
+          const reactive = reactives.get(key);
+          if (reactive) {
+            yCmds.push({ type: "add", key, value: reactive.snapshot });
+          }
+          continue;
+        }
+
+        if (summary.hasUpdate) {
+          const reactive = reactives.get(key);
+          if (reactive) {
+            yCmds.push({
+              type: "update",
+              key,
+              command: reactive.changes.value,
+            });
+          }
+        }
+      }
+
+      return yCmds;
+    },
+  );
+
+  // Build initial Y map - use map.snapshot to preserve key type
+  const initialYMap: IMap<K, Y> = map.snapshot.map(
+    (_, key) => initialReactives.get(key)!.snapshot,
+  );
+
+  return Reactive.create<IMap<K, Y>>(graph, yMapOps, yChanges, initialYMap);
 }

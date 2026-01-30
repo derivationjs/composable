@@ -10,7 +10,11 @@ const numberOps = new PrimitiveOperations<number>();
 const boolOps = new PrimitiveOperations<boolean>();
 
 // Helper to create a reactive predicate
-function greaterThan(graph: Graph, rx: Reactive<number>, threshold: number): Reactive<boolean> {
+function greaterThan(
+  graph: Graph,
+  rx: Reactive<number>,
+  threshold: number,
+): Reactive<boolean> {
   const predValue = rx.materialized.map((x) => x > threshold);
   const predChanges = rx.changes.map((cmd) => {
     if (cmd !== null) {
@@ -30,7 +34,7 @@ describe("filterList", () => {
   beforeEach(() => {
     graph = new Graph();
     changes = inputValue(graph, [] as ListCommand<number>[]);
-    list = Reactive.create(
+    list = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -47,14 +51,16 @@ describe("filterList", () => {
 
   it("should filter initial values", () => {
     const initialList = List([1, 3, 5, 7, 9]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
       initialList,
     );
 
-    const filtered = filterList(graph, listWithData, (rx) => greaterThan(graph, rx, 5));
+    const filtered = filterList(graph, listWithData, (rx) =>
+      greaterThan(graph, rx, 5),
+    );
     graph.step();
 
     expect(filtered.snapshot.toArray()).toEqual([7, 9]);
@@ -85,10 +91,10 @@ describe("filterList", () => {
     graph.step();
 
     changes.push([
-      { type: "insert", index: 0, value: 3 },  // not selected
-      { type: "insert", index: 1, value: 7 },  // selected
-      { type: "insert", index: 2, value: 4 },  // not selected
-      { type: "insert", index: 3, value: 9 },  // selected
+      { type: "insert", index: 0, value: 3 }, // not selected
+      { type: "insert", index: 1, value: 7 }, // selected
+      { type: "insert", index: 2, value: 4 }, // not selected
+      { type: "insert", index: 3, value: 9 }, // selected
     ]);
     graph.step();
 
@@ -97,14 +103,16 @@ describe("filterList", () => {
 
   it("should handle remove of selected item", () => {
     const initialList = List([3, 7, 4, 9]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
       initialList,
     );
 
-    const filtered = filterList(graph, listWithData, (rx) => greaterThan(graph, rx, 5));
+    const filtered = filterList(graph, listWithData, (rx) =>
+      greaterThan(graph, rx, 5),
+    );
     graph.step();
 
     expect(filtered.snapshot.toArray()).toEqual([7, 9]);
@@ -117,14 +125,16 @@ describe("filterList", () => {
 
   it("should handle remove of non-selected item", () => {
     const initialList = List([3, 7, 4, 9]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
       initialList,
     );
 
-    const filtered = filterList(graph, listWithData, (rx) => greaterThan(graph, rx, 5));
+    const filtered = filterList(graph, listWithData, (rx) =>
+      greaterThan(graph, rx, 5),
+    );
     graph.step();
 
     expect(filtered.snapshot.toArray()).toEqual([7, 9]);
@@ -137,14 +147,16 @@ describe("filterList", () => {
 
   it("should handle clear", () => {
     const initialList = List([3, 7, 4, 9]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
       initialList,
     );
 
-    const filtered = filterList(graph, listWithData, (rx) => greaterThan(graph, rx, 5));
+    const filtered = filterList(graph, listWithData, (rx) =>
+      greaterThan(graph, rx, 5),
+    );
     graph.step();
 
     expect(filtered.snapshot.toArray()).toEqual([7, 9]);
@@ -157,7 +169,7 @@ describe("filterList", () => {
 
   it("should only call predicate function for initial items", () => {
     const initialList = List([3, 7, 4, 9]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -198,7 +210,7 @@ describe("filterList", () => {
 
   it("should not call predicate function when removing items", () => {
     const initialList = List([3, 7, 4, 9]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -223,7 +235,7 @@ describe("filterList", () => {
 
   it("should not call predicate function when moving items", () => {
     const initialList = List([3, 7, 4, 9]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,
@@ -248,7 +260,7 @@ describe("filterList", () => {
 
   it("should not call predicate function when clearing", () => {
     const initialList = List([3, 7, 4, 9]);
-    const listWithData = Reactive.create(
+    const listWithData = Reactive.create<List<number>>(
       graph,
       new ListOperations(numberOps),
       changes,

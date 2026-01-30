@@ -1,35 +1,31 @@
 import { Map as IMap } from "immutable";
-import { OperationsBase, Operations, asBase } from "./operations.js";
+import { OperationsBase, Operations, asBase, Changes } from "./operations.js";
 
 /**
  * Commands for manipulating an Immutable.Map
  */
 export type MapCommand<K, V> =
-  | { type: "set"; key: K; value: V }
-  | { type: "update"; key: K; command: unknown }
+  | { type: "add"; key: K; value: V } // Must be an unused key
+  | { type: "update"; key: K; command: Changes<V> }
   | { type: "delete"; key: K }
   | { type: "clear" };
 
 /**
  * Operations implementation for Immutable.Map
  */
-export class MapOperations<K, V> implements OperationsBase<IMap<K, V>> {
+export class MapOperations<K, V>
+  implements OperationsBase<IMap<K, V>, MapCommand<K, V>[]>
+{
   constructor(private valueOps: Operations<V>) {}
 
   get valueOperations(): Operations<V> {
     return this.valueOps;
   }
 
-  unsafeUpdateValueOperations(valueOps: Operations<V>): void {
-    this.valueOps = valueOps;
-  }
-
-  apply(state: IMap<K, V>, command: unknown): IMap<K, V> {
-    const commands = command as Array<MapCommand<K, V>>;
-
+  apply(state: IMap<K, V>, commands: MapCommand<K, V>[]): IMap<K, V> {
     return commands.reduce((s, cmd) => {
       switch (cmd.type) {
-        case "set":
+        case "add":
           return s.set(cmd.key, cmd.value);
         case "update": {
           const item = s.get(cmd.key);
@@ -47,18 +43,26 @@ export class MapOperations<K, V> implements OperationsBase<IMap<K, V>> {
     }, state);
   }
 
-  emptyCommand(): unknown {
+  emptyCommand(): MapCommand<K, V>[] {
     return [];
   }
 
-  isEmpty(command: unknown): boolean {
-    const commands = command as Array<MapCommand<K, V>>;
+  isEmpty(commands: MapCommand<K, V>[]): boolean {
     return commands.length === 0;
   }
 
-  mergeCommands(firstCommand: unknown, secondCommand: unknown): unknown {
-    const firstCommands = firstCommand as Array<MapCommand<K, V>>;
-    const secondCommands = secondCommand as Array<MapCommand<K, V>>;
-    return [...firstCommands, ...secondCommands];
+  mergeCommands(
+    firstCommand: MapCommand<K, V>[],
+    secondCommand: MapCommand<K, V>[],
+  ): MapCommand<K, V>[] {
+    return [...firstCommand, ...secondCommand];
+  }
+
+  replaceCommand(value: IMap<K, V>): MapCommand<K, V>[] {
+    const cmds: MapCommand<K, V>[] = [{ type: "clear" }];
+    for (const [k, v] of value.entries()) {
+      cmds.push({ type: "add", key: k, value: v });
+    }
+    return cmds;
   }
 }
