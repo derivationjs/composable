@@ -24,6 +24,7 @@ export function foldLog<T, S>(
 
   // Incrementally fold over changes
   return source.changes.accumulate(initialValue, (acc, command) => {
+    if (command === null) return acc;
     const commands = command as Array<LogCommand<T>>;
     return commands.reduce((result, cmd) => {
       return reducer(result, cmd);
@@ -42,6 +43,7 @@ export function lengthLog<T>(
   const initialLength = source.previousSnapshot.length;
 
   return source.changes.accumulate(initialLength, (length, command) => {
+    if (command === null) return length;
     const commands = command as Array<LogCommand<T>>;
     return length + commands.length;
   });
@@ -60,6 +62,7 @@ export function mapLog<T, U>(
 
   // When log entries are added, map the new entries
   const changes = source.changes.map((cmd) => {
+    if (cmd === null) return null;
     const commands = cmd as Array<LogCommand<T>>;
     return commands.map(func);
   });
@@ -94,11 +97,11 @@ export function applyLog<T>(
 
   // When log entries are added, merge them into a single command
   const changes = source.changes.map((cmd) => {
-    const commands = cmd;
-    return commands.reduce(
+    if (cmd === null) return null as Changes<T>;
+    return cmd.reduce(
       (acc: Changes<T>, command: Changes<T>) =>
         asBase(operations).mergeCommands(acc, command),
-      asBase(operations).emptyCommand(),
+      null as Changes<T>,
     );
   });
 
@@ -124,9 +127,10 @@ export function applyLogSequential<T, X>(
   const accumulated = source.changes.accumulate(
     {
       state: initialSnapshot,
-      command: asBase(operations).emptyCommand(),
+      command: null as Changes<T>,
     },
     (acc, cmd) => {
+      if (cmd === null) return { state: acc.state, command: null as Changes<T> };
       const events = cmd as Array<X>;
 
       return events.reduce(
@@ -139,7 +143,7 @@ export function applyLogSequential<T, X>(
           const state = asBase(operations).apply(current.state, command);
           return { state, command: mergedCommand };
         },
-        { state: acc.state, command: asBase(operations).emptyCommand() },
+        { state: acc.state, command: null as Changes<T> },
       );
     },
   );

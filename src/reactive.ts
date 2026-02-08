@@ -51,7 +51,11 @@ export class Reactive<T> {
     const ops = asBase(operations);
     // Accumulate commands into materialized state
     const materialized = changes.accumulate(initial, (state, command) => {
-      return ops.apply(state, command);
+      if (command == null) {
+        return state;
+      } else {
+        return ops.apply(state, command);
+      }
     });
 
     // Track previous materialized state

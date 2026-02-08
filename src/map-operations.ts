@@ -14,7 +14,7 @@ export type MapCommand<K, V> =
  * Operations implementation for Immutable.Map
  */
 export class MapOperations<K, V>
-  implements OperationsBase<IMap<K, V>, MapCommand<K, V>[]>
+  implements OperationsBase<IMap<K, V>, MapCommand<K, V>[] | null>
 {
   constructor(private valueOps: Operations<V>) {}
 
@@ -22,7 +22,8 @@ export class MapOperations<K, V>
     return this.valueOps;
   }
 
-  apply(state: IMap<K, V>, commands: MapCommand<K, V>[]): IMap<K, V> {
+  apply(state: IMap<K, V>, commands: MapCommand<K, V>[] | null): IMap<K, V> {
+    if (commands === null) return state;
     return commands.reduce((s, cmd) => {
       switch (cmd.type) {
         case "add":
@@ -43,18 +44,12 @@ export class MapOperations<K, V>
     }, state);
   }
 
-  emptyCommand(): MapCommand<K, V>[] {
-    return [];
-  }
-
-  isEmpty(commands: MapCommand<K, V>[]): boolean {
-    return commands.length === 0;
-  }
-
   mergeCommands(
-    firstCommand: MapCommand<K, V>[],
-    secondCommand: MapCommand<K, V>[],
-  ): MapCommand<K, V>[] {
+    firstCommand: MapCommand<K, V>[] | null,
+    secondCommand: MapCommand<K, V>[] | null,
+  ): MapCommand<K, V>[] | null {
+    if (firstCommand === null) return secondCommand;
+    if (secondCommand === null) return firstCommand;
     return [...firstCommand, ...secondCommand];
   }
 

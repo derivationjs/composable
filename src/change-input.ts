@@ -9,8 +9,8 @@ export class ChangeInput<T> extends ReactiveValue<Changes<T>> {
   constructor(public readonly graph: Graph, operations: Operations<T>) {
     super();
     this.ops = asBase(operations);
-    this.current = this.ops.emptyCommand();
-    this.pending = this.ops.emptyCommand();
+    this.current = null as Changes<T>;
+    this.pending = null as Changes<T>;
     graph.addValue(this);
   }
 
@@ -21,8 +21,8 @@ export class ChangeInput<T> extends ReactiveValue<Changes<T>> {
 
   step(): void {
     this.current = this.pending;
-    this.pending = this.ops.emptyCommand();
-    if (!this.ops.isEmpty(this.current)) {
+    this.pending = null as Changes<T>;
+    if (this.current !== null) {
       this.invalidateDependents();
     }
     this.graph.markDirtyNextStep(this);

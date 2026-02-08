@@ -576,6 +576,7 @@ describe("Log Reactive Operations", () => {
 
       // Verify we can create derived reactive values from the result
       const length = list.changes.accumulate(0, (count, cmd) => {
+        if (cmd === null) return count;
         const commands = cmd as ListCommand<string>[];
         return commands.reduce((c, command) => {
           if (command.type === "insert") return c + 1;

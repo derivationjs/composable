@@ -17,7 +17,8 @@ export function getKeyMap<K, V>(
   const baseValueOps = asBase(valueOps);
 
   const changes = source.changes.map((commands) => {
-    let result: Changes<V> = baseValueOps.emptyCommand();
+    if (commands === null) return null as Changes<V>;
+    let result: Changes<V> = null as Changes<V>;
     for (const cmd of commands) {
       if (cmd.type === "update" && is(cmd.key, key)) {
         result = baseValueOps.mergeCommands(result, cmd.command);

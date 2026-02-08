@@ -1,7 +1,7 @@
 import { List, Map as IMap } from "immutable";
 import { Graph } from "derivation";
 import { Reactive } from "./reactive.js";
-import { Operations, asBase } from "./operations.js";
+import { Operations, Changes, asBase } from "./operations.js";
 import { decomposeList, ID } from "./decompose-list.js";
 import { groupBy } from "./group-by.js";
 import { MapCommand, MapOperations } from "./map-operations.js";
@@ -24,7 +24,7 @@ export function groupByList<X, K>(
 
   // Extract per-item update events from map changes
   const updateEvents = decomposedMap.changes.map((rawCmds) => {
-    const cmds = rawCmds as MapCommand<ID, X>[];
+    const cmds = (rawCmds ?? []) as MapCommand<ID, X>[];
     return cmds
       .filter(
         (c): c is Extract<MapCommand<ID, X>, { type: "update" }> =>
@@ -62,8 +62,8 @@ export function groupByList<X, K>(
         .select(id)
         .map((cmds) =>
           cmds.reduce(
-            (acc, cmd) => asBase(operations).mergeCommands(acc, cmd),
-            asBase(operations).emptyCommand(),
+            (acc: Changes<X>, cmd) => asBase(operations).mergeCommands(acc, cmd),
+            null as Changes<X>,
           ),
         );
       rx = Reactive.create(graph, operations, itemChanges, initialValue);
@@ -91,9 +91,19 @@ export function groupByList<X, K>(
     }
   });
 
+  // Created BEFORE allChanges — dynamic nodes get indices between this and allChanges
+  const _reactiveEnsurer = structure.changes.map((structCmds) => {
+    const cmds = (structCmds ?? []) as ListCommand<ID>[];
+    for (const cmd of cmds) {
+      if (cmd.type === "insert") {
+        getOrCreateReactives(cmd.value);
+      }
+    }
+  });
+
   const allChanges = structure.changes
     .zip(updateEvents, (structCmds, upds) => ({
-      structCmds: structCmds as ListCommand<ID>[],
+      structCmds: (structCmds ?? []) as ListCommand<ID>[],
       upds,
     }))
     .accumulate<{

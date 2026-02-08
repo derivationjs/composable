@@ -1,4 +1,4 @@
-import { OperationsBase, Changes } from "./operations.js";
+import { OperationsBase, Operations, Changes } from "./operations.js";
 import { Tuple } from "./tuple.js";
 
 /**
@@ -10,7 +10,7 @@ export type TupleCommand<T extends readonly unknown[]> = {
 };
 
 export class TupleOperations<T extends readonly unknown[]>
-  implements OperationsBase<Tuple<T>, TupleCommand<T>>
+  implements OperationsBase<Tuple<T>, TupleCommand<T> | null>
 {
   private ops: OperationsBase<unknown, unknown>[];
 
@@ -20,32 +20,29 @@ export class TupleOperations<T extends readonly unknown[]>
     this.ops = ops as unknown as OperationsBase<unknown, unknown>[];
   }
 
-  apply(state: Tuple<T>, command: TupleCommand<T>): Tuple<T> {
-    const cmds = command as TupleCommand<T>;
+  elementOperations<I extends number & keyof T>(index: I): Operations<T[I]> {
+    return this.ops[index] as Operations<T[I]>;
+  }
+
+  apply(state: Tuple<T>, command: TupleCommand<T> | null): Tuple<T> {
+    if (command === null) return state;
     let result = state;
     for (let i = 0; i < this.ops.length; i++) {
-      if (!this.ops[i].isEmpty(cmds[i]))
+      if (command[i] !== null)
         result = (result as any).set(
           i,
-          this.ops[i].apply((result as any).get(i), cmds[i]),
+          this.ops[i].apply((result as any).get(i), command[i]),
         );
     }
     return result;
   }
 
-  emptyCommand(): TupleCommand<T> {
-    return this.ops.map((o) => o.emptyCommand()) as TupleCommand<T>;
-  }
-
-  isEmpty(command: TupleCommand<T>): boolean {
-    const cmds = command as TupleCommand<T>;
-    return this.ops.every((o, i) => o.isEmpty(cmds[i]));
-  }
-
   mergeCommands(
-    first: TupleCommand<T>,
-    second: TupleCommand<T>,
-  ): TupleCommand<T> {
+    first: TupleCommand<T> | null,
+    second: TupleCommand<T> | null,
+  ): TupleCommand<T> | null {
+    if (first === null) return second;
+    if (second === null) return first;
     return this.ops.map((o, i) =>
       o.mergeCommands(first[i], second[i]),
     ) as TupleCommand<T>;

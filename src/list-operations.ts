@@ -15,7 +15,7 @@ export type ListCommand<T> =
  * Operations implementation for Immutable.List
  */
 export class ListOperations<T>
-  implements OperationsBase<List<T>, ListCommand<T>[]>
+  implements OperationsBase<List<T>, ListCommand<T>[] | null>
 {
   constructor(private itemOps: Operations<T>) {}
 
@@ -23,7 +23,8 @@ export class ListOperations<T>
     return this.itemOps;
   }
 
-  apply(state: List<T>, commands: ListCommand<T>[]): List<T> {
+  apply(state: List<T>, commands: ListCommand<T>[] | null): List<T> {
+    if (commands === null) return state;
     return commands.reduce((s, cmd) => {
       switch (cmd.type) {
         case "insert":
@@ -49,18 +50,12 @@ export class ListOperations<T>
     }, state);
   }
 
-  emptyCommand(): ListCommand<T>[] {
-    return [];
-  }
-
-  isEmpty(command: ListCommand<T>[]): boolean {
-    return command.length === 0;
-  }
-
   mergeCommands(
-    firstCommand: ListCommand<T>[],
-    secondCommand: ListCommand<T>[],
-  ): ListCommand<T>[] {
+    firstCommand: ListCommand<T>[] | null,
+    secondCommand: ListCommand<T>[] | null,
+  ): ListCommand<T>[] | null {
+    if (firstCommand === null) return secondCommand;
+    if (secondCommand === null) return firstCommand;
     return [...firstCommand, ...secondCommand];
   }
 

@@ -38,7 +38,8 @@ function extractInnerCmds<K, ID, V>(
     if ((cmd.type === "delete" || cmd.type === "add") && is(cmd.key, key))
       return null;
     if (cmd.type === "update" && is(cmd.key, key)) {
-      const inner = cmd.command as MapCommand<ID, V>[];
+      const inner = cmd.command as MapCommand<ID, V>[] | null;
+      if (inner === null) continue;
       if (inner.some((c) => c.type === "clear")) return null;
       result.push(...inner);
     }
@@ -154,9 +155,9 @@ export function joinMap<K, ID1, ID2, V1, V2>(
     right.changes,
     right.previousMaterialized,
     (lRawCmds, lRawPrev, rRawCmds, rRawPrev) => {
-      const lCmds = lRawCmds as MapCommand<K, IMap<ID1, V1>>[];
+      const lCmds = (lRawCmds ?? []) as MapCommand<K, IMap<ID1, V1>>[];
       const lPrev = lRawPrev as IMap<K, IMap<ID1, V1>>;
-      const rCmds = rRawCmds as MapCommand<K, IMap<ID2, V2>>[];
+      const rCmds = (rRawCmds ?? []) as MapCommand<K, IMap<ID2, V2>>[];
       const rPrev = rRawPrev as IMap<K, IMap<ID2, V2>>;
 
       // Compute current states by applying commands
@@ -196,8 +197,8 @@ export function joinMap<K, ID1, ID2, V1, V2>(
             for (const [pk, pv] of productMap(lCurrK, rCurrK))
               innerCmds.push({ type: "add", key: pk, value: pv });
           } else {
-            const emptyV1 = v1Ops.emptyCommand();
-            const emptyV2 = v2Ops.emptyCommand();
+            const emptyV1 = null as Changes<V1>;
+            const emptyV2 = null as Changes<V2>;
             // Phase 1: left changes × old right
             crossCommands(
               lInner,

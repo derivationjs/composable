@@ -27,6 +27,7 @@ export function getSingleMapValue<K, V>(
   const changes = source.changes.zip(
     source.previousMaterialized,
     (cmds, prevMap): Changes<V> => {
+      if (cmds === null) return null as Changes<V>;
       const nextMap = baseMapOps.apply(prevMap, cmds);
       if (prevMap.size === 1 && nextMap.size === 1) {
         const prevEntry = prevMap.entries().next().value as [K, V];
@@ -35,7 +36,7 @@ export function getSingleMapValue<K, V>(
         const [nextKey, nextVal] = nextEntry;
 
         if (is(prevKey, nextKey)) {
-          let merged = baseValueOps.emptyCommand();
+          let merged: Changes<V> = null as Changes<V>;
           let sawUpdate = false;
           let structural = false;
 
@@ -60,7 +61,7 @@ export function getSingleMapValue<K, V>(
 
           if (!structural) {
             if (!sawUpdate || is(prevVal, nextVal)) {
-              return baseValueOps.emptyCommand();
+              return null as Changes<V>;
             }
             return merged;
           }
@@ -70,7 +71,7 @@ export function getSingleMapValue<K, V>(
       const prevValue = valueFromMap(prevMap);
       const nextValue = valueFromMap(nextMap);
       if (is(prevValue, nextValue)) {
-        return baseValueOps.emptyCommand();
+        return null as Changes<V>;
       }
       return baseValueOps.replaceCommand(nextValue);
     },

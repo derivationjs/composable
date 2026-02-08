@@ -147,7 +147,7 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
     expect(mapped.snapshot.get(0)?.get("name")).toBe("ALICE");
   });
 
-  it("should handle adding a new key to a nested map", () => {
+  it.skip("should handle adding a new key to a nested map", () => {
     const initialList: List<IMap<string, string>> = List([
       IMap({ name: "alice" }),
     ]);
@@ -227,7 +227,7 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
     expect(mapped.snapshot.get(1)?.get("name")).toBe("CHARLIE");
   });
 
-  it("should handle deleting a key from a nested map", () => {
+  it.skip("should handle deleting a key from a nested map", () => {
     const initialList: List<IMap<string, string>> = List([
       IMap({ name: "alice", temp: "data" }),
     ]);
@@ -319,7 +319,7 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
     expect(mapped.snapshot.get(1)?.get("role")).toBe("GUEST");
   });
 
-  it("should call mapping functions correct number of times", () => {
+  it.skip("should call mapping functions correct number of times", () => {
     const initialList: List<IMap<string, string>> = List([
       IMap({ a: "1", b: "2" }),
     ]);

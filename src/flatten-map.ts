@@ -20,6 +20,7 @@ export function flattenMap<K1, K2, V>(
   const changes = source.changes.zip(
     source.previousMaterialized,
     (cmd, prevState) => {
+      if (cmd === null) return null;
       const commands = cmd as Array<MapCommand<K1, IMap<K2, V>>>;
       const prev = prevState as IMap<K1, IMap<K2, V>>;
       const result: Array<MapCommand<Tuple<[K1, K2]>, V>> = [];
@@ -37,7 +38,7 @@ export function flattenMap<K1, K2, V>(
             break;
           }
           case "update": {
-            const innerCommands = command.command as Array<MapCommand<K2, V>>;
+            const innerCommands = (command.command ?? []) as Array<MapCommand<K2, V>>;
             for (const inner of innerCommands) {
               switch (inner.type) {
                 case "add":

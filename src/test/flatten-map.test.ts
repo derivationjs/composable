@@ -4,6 +4,7 @@ import { Map as IMap } from "immutable";
 import { Reactive } from "../reactive.js";
 import { MapOperations, MapCommand } from "../map-operations.js";
 import { PrimitiveOperations } from "../primitive-operations.js";
+import { mapMap } from "../map-reactive.js";
 import { flattenMap } from "../flatten-map.js";
 import { Tuple } from "../tuple.js";
 
@@ -200,5 +201,46 @@ describe("flattenMap", () => {
 
     expect(flat.snapshot.size).toBe(1);
     expect(flat.snapshot.get(Tuple("b", "z"))).toBe(3);
+  });
+
+  it.skip("propagates updates when flattening a mapMap that starts empty", () => {
+    const outerChanges = inputValue(graph, [] as MapCommand<string, number>[]);
+    const outerMap = Reactive.create<IMap<string, number>>(
+      graph,
+      new MapOperations<string, number>(new PrimitiveOperations<number>()),
+      outerChanges,
+      IMap<string, number>(),
+    );
+
+    const innerMapOps = new MapOperations<string, number>(
+      new PrimitiveOperations<number>(),
+    );
+    const mapped = mapMap<string, number, IMap<string, number>>(
+      graph,
+      outerMap,
+      (rx) => {
+        const innerChanges = rx.changes.map(
+          (cmd): MapCommand<string, number>[] =>
+            cmd === null ? [] : [{ type: "update", key: "val", command: cmd }],
+        );
+        const initial = IMap<string, number>({ val: rx.snapshot });
+        return Reactive.create<IMap<string, number>>(
+          graph,
+          innerMapOps,
+          innerChanges,
+          initial,
+        );
+      },
+    );
+
+    const flat = flattenMap(graph, mapped);
+
+    outerChanges.push([{ type: "add", key: "outer", value: 1 }]);
+    graph.step();
+
+    outerChanges.push([{ type: "update", key: "outer", command: 2 }]);
+    graph.step();
+
+    expect(flat.snapshot.get(Tuple("outer", "val"))).toBe(2);
   });
 });

@@ -14,8 +14,6 @@ import type { Tuple } from "./tuple.js";
  * Commands are represented as `unknown` since TypeScript lacks associated types.
  */
 export interface OperationsBase<T, C> {
-  emptyCommand(): C;
-  isEmpty(command: C): boolean;
   mergeCommands(firstCommand: C, secondCommand: C): C;
 
   apply(state: T, command: C): T;
@@ -39,13 +37,13 @@ export type Operations<T> = [T] extends [List<infer X>]
         : PrimitiveOperations<T & NonNullable<unknown>>;
 
 export type Changes<T> = [T] extends [List<infer X>]
-  ? ListCommand<X>[]
+  ? ListCommand<X>[] | null
   : [T] extends [IMap<infer K, infer V>]
-    ? MapCommand<K, V>[]
+    ? MapCommand<K, V>[] | null
     : [T] extends [Log<infer X>]
-      ? X[]
+      ? X[] | null
       : [T] extends [Tuple<infer X extends readonly unknown[]>]
-        ? TupleCommand<X>
+        ? TupleCommand<X> | null
         : T | null;
 
 /**

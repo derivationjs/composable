@@ -3,7 +3,12 @@ import { Graph, ReactiveValue, constantValue } from "derivation";
 import { Reactive } from "./reactive.js";
 import { Operations, asBase, Changes } from "./operations.js";
 import { MapCommand, MapOperations } from "./map-operations.js";
-import { forwardingProxy } from "./forwarding-proxy.js";
+import { operationsProxy } from "./operations-proxy.js";
+import { groupBy } from "./group-by.js";
+import { joinReactive } from "./join-reactive.js";
+import { TwoThreeTree, Monoid } from "./two-three-tree.js";
+import { unsafeMergeMap, emptyReactiveMap } from "./unsafe-merge-map.js";
+import { singletonMap } from "./singleton-map.js";
 
 /**
  * Converts a Map of reactive values into a reactive Map.
@@ -23,6 +28,31 @@ export function sequenceMap<K, V>(
   );
 }
 
+function takeRightWhile<X>(
+  array: X[],
+  predicate: (x: X) => boolean,
+): [X | null, X[]] {
+  const result = [];
+
+  for (let i = array.length - 1; i >= 0; i--) {
+    if (!predicate(array[i])) {
+      return [array[i], result.reverse()];
+    }
+    result.push(array[i]);
+  }
+
+  return [null, result.reverse()];
+}
+
+function decomposeChanges<K, V>(
+  changes: ReactiveValue<MapCommand<K, V>[]>,
+): [ReactiveValue<boolean>, ReactiveValue<MapCommand<K, V>[]>] {
+  let result = changes.map((changes) =>
+    takeRightWhile(changes, (change) => change.type !== "clear"),
+  );
+  return [result.map((x) => x[0] !== null), result.map((x) => x[1])];
+}
+
 /**
  * Maps a Reactive<Map<K, X>> to Reactive<Map<K, Y>> by applying a function
  * to each value's reactive wrapper.
@@ -31,6 +61,7 @@ export function sequenceMap<K, V>(
  * Updates to existing values flow through the reactive chain without
  * calling f again.
  */
+
 export function mapMap<K, X, Y>(
   graph: Graph,
   map: Reactive<IMap<K, X>>,
@@ -38,200 +69,115 @@ export function mapMap<K, X, Y>(
 ): Reactive<IMap<K, Y>> {
   const valueOperations = map.operations.valueOperations;
   const valueOpsBase = asBase(valueOperations);
+  const yValueOps = operationsProxy({} as Operations<Y>);
+  const yMapOps = new MapOperations<K, Y>(yValueOps);
 
-  const updateCommandForKey = (
-    cmds: MapCommand<K, X>[],
-    prevHasKey: boolean,
-    key: K,
-  ): Changes<X> => {
-    let present = prevHasKey;
-    let merged = valueOpsBase.emptyCommand();
+  const [cleared, lastChanges] = decomposeChanges(
+    map.changes.map((changes) => changes ?? []),
+  );
+  const newChanges = lastChanges as ReactiveValue<
+    Exclude<MapCommand<K, X>, { type: "clear" }>[]
+  >;
 
+  type Add = Extract<MapCommand<K, X>, { type: "add" }>;
+  type Delete = Extract<MapCommand<K, X>, { type: "delete" }>;
+  type Update = Extract<MapCommand<K, X>, { type: "update" }>;
+  const keyState = newChanges.map((cmds) => {
+    let grouped = IMap<K, MapCommand<K, X>[]>();
     for (const cmd of cmds) {
-      switch (cmd.type) {
-        case "add": {
-          if (cmd.key === key) {
-            present = true;
-            merged = valueOpsBase.emptyCommand();
-          }
-          break;
-        }
-        case "delete": {
-          if (cmd.key === key) {
-            present = false;
-            merged = valueOpsBase.emptyCommand();
-          }
-          break;
-        }
-        case "clear": {
-          present = false;
-          merged = valueOpsBase.emptyCommand();
-          break;
-        }
-        case "update": {
-          if (cmd.key === key && present) {
-            merged = valueOpsBase.mergeCommands(merged, cmd.command);
-          }
-          break;
-        }
+      const existing = grouped.get(cmd.key);
+      if (existing) {
+        grouped = grouped.set(cmd.key, [...existing, cmd]);
+      } else {
+        grouped = grouped.set(cmd.key, [cmd]);
       }
     }
 
-    return present ? merged : valueOpsBase.emptyCommand();
-  };
-
-  // Create a forwarding proxy for Y operations - we'll set the real target lazily from first Y reactive
-  const { proxy: yValueOpsProxy, setTarget: setYValueOps } = forwardingProxy(
-    {} as Operations<Y>,
-  );
-  const yMapOps = new MapOperations<K, Y>(yValueOpsProxy);
-
-  function ensureReactive(
-    reactives: IMap<K, Reactive<Y>>,
-    key: K,
-    initialValue: X,
-  ): { reactives: IMap<K, Reactive<Y>>; reactive: Reactive<Y> } {
-    const existing = reactives.get(key);
-    if (existing) {
-      return { reactives, reactive: existing };
+    let result = IMap<K, [Add | Delete | null, Changes<X>]>();
+    for (const [key, keyCmds] of grouped) {
+      const [structural, updates] = takeRightWhile(
+        keyCmds,
+        (c) => c.type === "update",
+      );
+      const merged = (updates as Update[]).reduce(
+        (acc: Changes<X>, u) => valueOpsBase.mergeCommands(acc, u.command),
+        null as Changes<X>,
+      );
+      result = result.set(key, [structural as Add | Delete | null, merged]);
     }
+    return result;
+  });
 
-    const itemChanges = map.changes.zip(
-      map.previousMaterialized,
-      (cmds, prevMap) => updateCommandForKey(cmds, prevMap.has(key), key),
-    );
+  const groupedChanges = groupBy(
+    keyState.map((state) =>
+      [...state.entries()].map(([key, [structural, changes]]) => ({
+        key,
+        structural,
+        changes,
+      })),
+    ),
+    (entry) => entry.key,
+    (entry) => ({ structural: entry.structural, changes: entry.changes }),
+  );
+
+  const createReactive = (key: K, initialValue: X): Reactive<IMap<K, Y>> => {
+    const itemChanges = groupedChanges.select(key).map((entries) => {
+      if (entries.length === 0) return null as Changes<X>;
+      const { structural, changes } = entries[0];
+      if (structural !== null && structural.type === "add") {
+        const replace = valueOpsBase.replaceCommand(structural.value);
+        return valueOpsBase.mergeCommands(replace, changes);
+      }
+      return changes;
+    });
     const rx = Reactive.create(
       graph,
       valueOperations,
       itemChanges,
       initialValue,
     );
-    const reactive = f(rx, key);
-    setYValueOps(reactive.operations);
-    return { reactives: reactives.set(key, reactive), reactive };
+    const ry = f(rx, key);
+    yValueOps.setTarget(ry.operations);
+    return singletonMap(graph, key, ry);
+  };
+
+  // TODO: Order reactives by the key hashcode given by hash from immutable.
+  const mergeMonoid: Monoid<Reactive<IMap<K, Y>>> = {
+    empty: emptyReactiveMap(graph, yMapOps),
+    combine: (a, b) => unsafeMergeMap(graph, a, b, yMapOps),
+  };
+
+  const tree = new TwoThreeTree<K, Reactive<IMap<K, Y>>, Reactive<IMap<K, Y>>>(
+    mergeMonoid,
+    (v) => v,
+  );
+
+  for (const [key, value] of map.snapshot.entries()) {
+    tree.insert(key, createReactive(key, value), () => false);
   }
 
-  const initialReactives = map.snapshot.reduce<IMap<K, Reactive<Y>>>(
-    (cache, value, key) => ensureReactive(cache, key, value).reactives,
-    IMap<K, Reactive<Y>>(),
-  );
-
-  // Track the Reactive<Y> instances that correspond to each key. This runs
-  // before we emit commands so the reactive chains for dynamically added keys
-  // are created (and thus stepped) before we try to read their changes.
-  const reactivesState: ReactiveValue<IMap<K, Reactive<Y>>> =
-    map.changes.accumulate(initialReactives, (reactives, cmds) => {
-      return cmds.reduce<IMap<K, Reactive<Y>>>((current, cmd) => {
-        switch (cmd.type) {
-          case "add": {
-            return ensureReactive(current, cmd.key, cmd.value).reactives;
-          }
-          case "delete": {
-            return current.delete(cmd.key);
-          }
-          case "clear": {
-            return IMap<K, Reactive<Y>>();
-          }
-          default:
-            return current;
-        }
-      }, reactives);
-    });
-
-  const yChanges: ReactiveValue<MapCommand<K, Y>[]> = map.changes.zip3(
-    reactivesState,
-    map.previousMaterialized,
-    map.materialized,
-    (cmds, reactives, prevMap, nextMap) => {
-      const yCmds: MapCommand<K, Y>[] = [];
-
-      let effectiveCmds = cmds;
-      let startMap = prevMap;
-      let lastClearIndex = -1;
-      for (let i = 0; i < cmds.length; i++) {
-        if (cmds[i].type === "clear") {
-          lastClearIndex = i;
+  const treeState = cleared
+    .zip(keyState, (cleared, keys) => [cleared, keys] as const)
+    .accumulate([tree], ([tree], [cleared, keys]) => {
+      if (cleared) {
+        for (const { id } of [...tree]) {
+          tree.remove(id);
         }
       }
 
-      if (lastClearIndex !== -1) {
-        yCmds.push({ type: "clear" });
-        effectiveCmds = cmds.slice(lastClearIndex + 1);
-        startMap = IMap<K, X>();
-      }
-
-      const keyOrder: K[] = [];
-      const summaries = new Map<
-        K,
-        { hasAdd: boolean; hasDelete: boolean; hasUpdate: boolean }
-      >();
-
-      for (const cmd of effectiveCmds) {
-        if (cmd.type === "add" || cmd.type === "update" || cmd.type === "delete") {
-          const key = cmd.key;
-          let summary = summaries.get(key);
-          if (!summary) {
-            summary = { hasAdd: false, hasDelete: false, hasUpdate: false };
-            summaries.set(key, summary);
-            keyOrder.push(key);
-          }
-          if (cmd.type === "add") {
-            summary.hasAdd = true;
-          } else if (cmd.type === "delete") {
-            summary.hasDelete = true;
-          } else {
-            summary.hasUpdate = true;
-          }
+      for (const [key, [structural, changes]] of keys) {
+        if (structural !== null && structural.type === "delete") {
+          tree.remove(key);
+        } else if (structural !== null && structural.type === "add") {
+          tree.remove(key);
+          const newReactive = createReactive(key, structural.value);
+          tree.insert(key, newReactive, () => false);
         }
       }
 
-      for (const key of keyOrder) {
-        const summary = summaries.get(key)!;
-        const startHasKey = startMap.has(key);
-        const endHasKey = nextMap.has(key);
+      return [tree];
+    })
+    .map(([tree]) => tree.summary);
 
-        if (!endHasKey) {
-          yCmds.push({ type: "delete", key });
-          continue;
-        }
-
-        if (summary.hasDelete) {
-          yCmds.push({ type: "delete", key });
-          const reactive = reactives.get(key);
-          if (reactive) {
-            yCmds.push({ type: "add", key, value: reactive.snapshot });
-          }
-          continue;
-        }
-
-        if (!startHasKey || summary.hasAdd) {
-          const reactive = reactives.get(key);
-          if (reactive) {
-            yCmds.push({ type: "add", key, value: reactive.snapshot });
-          }
-          continue;
-        }
-
-        if (summary.hasUpdate) {
-          const reactive = reactives.get(key);
-          if (reactive) {
-            yCmds.push({
-              type: "update",
-              key,
-              command: reactive.changes.value,
-            });
-          }
-        }
-      }
-
-      return yCmds;
-    },
-  );
-
-  // Build initial Y map - use map.snapshot to preserve key type
-  const initialYMap: IMap<K, Y> = map.snapshot.map(
-    (_, key) => initialReactives.get(key)!.snapshot,
-  );
-
-  return Reactive.create<IMap<K, Y>>(graph, yMapOps, yChanges, initialYMap);
+  return joinReactive(treeState);
 }

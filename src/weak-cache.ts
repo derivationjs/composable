@@ -37,4 +37,13 @@ export class WeakCache<K, V extends object> {
     }
     return false;
   }
+
+  *[Symbol.iterator](): IterableIterator<[K, V]> {
+    for (const [key, ref] of this.map) {
+      const value = ref.deref();
+      if (value !== undefined) {
+        yield [key, value];
+      }
+    }
+  }
 }

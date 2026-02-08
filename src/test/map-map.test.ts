@@ -6,7 +6,8 @@ import { MapOperations, MapCommand } from "../map-operations.js";
 import { mapMap } from "../map-reactive.js";
 import { flattenMap } from "../flatten-map.js";
 import { PrimitiveOperations } from "../primitive-operations.js";
-import { Tuple } from "../tuple.js";
+import { getKeyMap } from "../get-key-map.js";
+import { mapPrimitive } from "../map-primitive.js";
 
 // Simple operations for number values
 const numberOps = new PrimitiveOperations<number>();
@@ -64,19 +65,13 @@ describe("mapMap", () => {
   });
 
   it("should handle set", () => {
-    const mapped = mapMap<string, number, number>(graph, map, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
-    });
+    const mapped = mapMap<string, number, number>(graph, map, (rx) => rx);
     graph.step();
 
     changes.push([{ type: "add", key: "x", value: 5 }]);
     graph.step();
 
-    expect(mapped.snapshot.get("x")).toBe(10);
+    expect(mapped.snapshot.get("x")).toBe(5);
   });
 
   it("should handle multiple sets", () => {
@@ -99,6 +94,24 @@ describe("mapMap", () => {
     expect(mapped.snapshot.get("a")).toBe(2);
     expect(mapped.snapshot.get("b")).toBe(4);
     expect(mapped.snapshot.get("c")).toBe(6);
+  });
+
+  it("handles simple update", () => {
+    const initialMap = IMap({ a: 2 });
+    const mapWithData = Reactive.create<IMap<string, number>>(
+      graph,
+      new MapOperations<string, number>(numberOps),
+      changes,
+      initialMap,
+    );
+
+    const mapped = mapMap<string, number, number>(
+      graph,
+      mapWithData,
+      (rx) => rx,
+    );
+    changes.push([{ type: "update", key: "a", command: 10 }]);
+    graph.step();
   });
 
   it("should handle update", () => {
@@ -213,6 +226,29 @@ describe("mapMap", () => {
     expect(mapped.snapshot.get("a")).toBe(200);
     expect(mapped.snapshot.get("b")).toBe(400);
     expect(mapped.snapshot.get("c")).toBe(600);
+  });
+
+  it("doesn't crash if you add two values", () => {
+    const initialMap = IMap<string, number>();
+    const mapWithData = Reactive.create<IMap<string, number>>(
+      graph,
+      new MapOperations<string, number>(numberOps),
+      changes,
+      initialMap,
+    );
+
+    const mapped = mapMap<string, number, number>(
+      graph,
+      mapWithData,
+      (rx) => rx,
+    );
+    graph.step();
+
+    changes.push([{ type: "add", key: "a", value: 1 }]);
+    graph.step();
+
+    changes.push([{ type: "add", key: "b", value: 2 }]);
+    graph.step();
   });
 
   it("should only call f on set (new key), not on update or delete", () => {
@@ -404,6 +440,18 @@ describe("mapMap", () => {
     expect(keysReceived.sort()).toEqual(["a", "b"]);
   });
 
+  it("should handle adding a key", () => {
+    const mapped = mapMap<string, number, number>(graph, map, (rx) =>
+      mapPrimitive(graph, rx, (value) => value * 2),
+    );
+    graph.step();
+
+    changes.push([{ type: "add", key: "x", value: 5 }]);
+    graph.step();
+
+    expect(mapped.snapshot.get("x")).toBe(10); // 5 * 2
+  });
+
   it("should handle update to a dynamically added key", () => {
     const mapped = mapMap<string, number, number>(graph, map, (rx) => {
       const doubled = rx.materialized.map((x) => x * 2);
@@ -433,6 +481,59 @@ describe("mapMap", () => {
     // stale (null) because yChanges evaluates before the dynamically
     // created rx/ry chain, so the update is silently dropped.
     expect(mapped.snapshot.get("x")).toBe(40);
+  });
+
+  it("should propagate changes from external reactives used in transform", () => {
+    // This reproduces a bug where mapMap's transform function depends on an
+    // external reactive (via getKeyMap), but changes to that external reactive
+    // don't propagate through mapMap because the source map didn't change.
+    //
+    // Real-world scenario: a kanban app derives cardsByBoardMap by mapping over
+    // listsByBoardId (list structure) and pulling cards from cardsByListId
+    // (card data) via getKeyMap. When cards change, listsByBoardId doesn't
+    // change, so mapMap swallows the update.
+
+    // Source map: represents the "structure" (e.g., which lists belong to a board)
+    const sourceChanges = inputValue(graph, [] as MapCommand<string, number>[]);
+    const sourceMap = Reactive.create<IMap<string, number>>(
+      graph,
+      new MapOperations<string, number>(numberOps),
+      sourceChanges,
+      IMap({ a: 1, b: 2 }),
+    );
+
+    // External map: represents independently-changing data (e.g., cards per list)
+    const externalChanges = inputValue(
+      graph,
+      [] as MapCommand<string, number>[],
+    );
+    const externalMap = Reactive.create<IMap<string, number>>(
+      graph,
+      new MapOperations<string, number>(numberOps),
+      externalChanges,
+      IMap({ a: 10, b: 20 }),
+    );
+
+    // mapMap over sourceMap, but transform pulls values from externalMap
+    const mapped = mapMap<string, number, number>(
+      graph,
+      sourceMap,
+      (_rx, key) => getKeyMap(graph, externalMap, key, 0),
+    );
+    graph.step();
+
+    // Initial state should reflect externalMap values
+    expect(mapped.snapshot.get("a")).toBe(10);
+    expect(mapped.snapshot.get("b")).toBe(20);
+
+    // Update externalMap WITHOUT changing sourceMap
+    externalChanges.push([{ type: "update", key: "a", command: 99 }]);
+    graph.step();
+
+    // BUG: mapMap returns null changes because sourceMap didn't change,
+    // even though the transformed reactive (getKeyMap) did change.
+    expect(mapped.snapshot.get("a")).toBe(99);
+    expect(mapped.snapshot.get("b")).toBe(20);
   });
 
   it("should produce valid operations for flattenMap when starting empty", () => {

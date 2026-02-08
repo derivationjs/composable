@@ -20,8 +20,8 @@ export function composeList<T>(
 
   const changes = idList.changes
     .zip(map.changes, (idCmds, mapCmds) => ({
-      idCmds: idCmds as ListCommand<ID>[],
-      mapCmds: mapCmds as MapCommand<ID, T>[],
+      idCmds: (idCmds ?? []) as ListCommand<ID>[],
+      mapCmds: (mapCmds ?? []) as MapCommand<ID, T>[],
     }))
     .accumulate(
       {
@@ -31,6 +31,7 @@ export function composeList<T>(
       (state, { idCmds, mapCmds }) => {
         const outputCmds: ListCommand<T>[] = [];
         let ids = state.ids;
+        const insertedIds = new Set<ID>();
 
         // Process structural changes from the ID list
         for (const cmd of idCmds) {
@@ -38,6 +39,7 @@ export function composeList<T>(
             case "insert": {
               const value = map.snapshot.get(cmd.value)!;
               ids = ids.insert(cmd.index, cmd.value);
+              insertedIds.add(cmd.value);
               outputCmds.push({ type: "insert", index: cmd.index, value });
               break;
             }
@@ -62,9 +64,9 @@ export function composeList<T>(
           }
         }
 
-        // Process value updates from the map
+        // Process value updates from the map (skip IDs inserted this batch)
         for (const cmd of mapCmds) {
-          if (cmd.type === "update") {
+          if (cmd.type === "update" && !insertedIds.has(cmd.key)) {
             const index = ids.indexOf(cmd.key);
             if (index >= 0) {
               outputCmds.push({

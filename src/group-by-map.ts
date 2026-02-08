@@ -1,7 +1,7 @@
 import { Map as IMap } from "immutable";
 import { Graph } from "derivation";
 import { Reactive } from "./reactive.js";
-import { Operations, Primitive, asBase } from "./operations.js";
+import { Operations, Changes, Primitive, asBase } from "./operations.js";
 import { groupBy } from "./group-by.js";
 import { MapCommand, MapOperations } from "./map-operations.js";
 
@@ -25,7 +25,7 @@ export function groupByMap<ID, T, K>(
   // Group update commands by key (ID)
   const groupedUpdates = groupBy(
     source.changes.map((cmds) => {
-      const commands = cmds as MapCommand<ID, T>[];
+      const commands = (cmds ?? []) as MapCommand<ID, T>[];
       return commands
         .filter(
           (cmd): cmd is MapCommand<ID, T> & { type: "update" } =>
@@ -57,8 +57,8 @@ export function groupByMap<ID, T, K>(
         .select(id)
         .map((cmds) =>
           cmds.reduce(
-            (acc, cmd) => asBase(valueOperations).mergeCommands(acc, cmd),
-            asBase(valueOperations).emptyCommand(),
+            (acc: Changes<T>, cmd) => asBase(valueOperations).mergeCommands(acc, cmd),
+            null as Changes<T>,
           ),
         );
       rx = Reactive.create(graph, valueOperations, itemChanges, initialValue);
@@ -109,9 +109,19 @@ export function groupByMap<ID, T, K>(
     innerMapOps as unknown as Operations<IMap<ID, T>>,
   );
 
+  // Created BEFORE allChanges — dynamic nodes get indices between this and allChanges
+  const _reactiveEnsurer = source.changes.map((srcCmds) => {
+    const cmds = (srcCmds ?? []) as MapCommand<ID, T>[];
+    for (const cmd of cmds) {
+      if (cmd.type === "add") {
+        getOrCreateReactives(cmd.key, cmd.value);
+      }
+    }
+  });
+
   const allChanges = source.changes
     .zip(groupedUpdates, (srcCmds, _grouped) => ({
-      srcCmds: srcCmds as MapCommand<ID, T>[],
+      srcCmds: (srcCmds ?? []) as MapCommand<ID, T>[],
     }))
     .accumulate<{
       currentKeys: Map<ID, K>;

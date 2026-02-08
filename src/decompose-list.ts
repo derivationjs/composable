@@ -33,6 +33,7 @@ export function decomposeList<T>(
       mapCmds: [] as MapCommand<ID, T>[],
     },
     (state, rawCommands) => {
+      if (rawCommands === null) return { ids: state.ids, idCmds: [] as ListCommand<ID>[], mapCmds: [] as MapCommand<ID, T>[] };
       const commands = rawCommands as ListCommand<T>[];
       let ids = state.ids;
       const idCmds: ListCommand<ID>[] = [];

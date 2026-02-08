@@ -33,6 +33,7 @@ export { sequenceList, mapList } from "./list-reactive.js";
 
 // Map reactive operations
 export { sequenceMap, mapMap } from "./map-reactive.js";
+export { singletonMap } from "./singleton-map.js";
 
 // Primitive reactive operations
 export { mapPrimitive } from "./map-primitive.js";
@@ -49,6 +50,7 @@ export { joinMap } from "./join-map.js";
 export { getKeyMap } from "./get-key-map.js";
 export { getSingleMapValue } from "./get-single-map-value.js";
 export { flattenMap } from "./flatten-map.js";
+export { projectTuple } from "./project-tuple.js";
 export { decomposeList } from "./decompose-list.js";
 export { composeList } from "./compose-list.js";
 

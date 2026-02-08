@@ -13,16 +13,12 @@ export class PrimitiveOperations<T extends NonNullable<unknown>>
     }
   }
 
-  emptyCommand(): T | null {
-    return null;
-  }
-
-  isEmpty(command: T | null): boolean {
-    return command === null;
-  }
-
   mergeCommands(firstCommand: T | null, secondCommand: T | null): T | null {
-    return secondCommand;
+    if (secondCommand === null) {
+      return firstCommand;
+    } else {
+      return secondCommand;
+    }
   }
 
   replaceCommand(value: T): T | null {

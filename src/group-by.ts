@@ -84,10 +84,18 @@ class GroupByStream<T, K, V> extends ReactiveValue<IMap<K, V[]>> {
     let selectStream = this.cache.get(key);
     if (!selectStream) {
       selectStream = new SelectStream<V>(this.graph);
+      selectStream.ensureHeight(this.height + 1);
       selectStream.updateValue(this._value.get(key) ?? []);
       this.cache.set(key, selectStream);
     }
     return selectStream;
+  }
+
+  ensureHeight(minHeight: number): void {
+    super.ensureHeight(minHeight);
+    for (const [_, stream] of this.cache) {
+      stream.ensureHeight(minHeight + 1);
+    }
   }
 
   get value(): IMap<K, V[]> {
