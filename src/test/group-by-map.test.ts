@@ -4,18 +4,14 @@ import { Map as IMap } from "immutable";
 import { Reactive } from "../reactive.js";
 import { MapOperations, MapCommand } from "../map-operations.js";
 import { groupByMap } from "../group-by-map.js";
+import { mapPrimitive } from "../map-primitive.js";
 import { PrimitiveOperations } from "../primitive-operations.js";
 
 const numberOps = new PrimitiveOperations<number>();
-const stringOps = new PrimitiveOperations<string>();
 
 function makeKeyFn(graph: Graph) {
   return (rx: Reactive<number>): Reactive<string> => {
-    const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-    const keyChanges = rx.changes.map((cmd) =>
-      cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-    );
-    return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+    return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
   };
 }
 
@@ -100,7 +96,7 @@ describe("groupByMap", () => {
     expect(grouped.snapshot.get("odd")!.get("b")).toBe(3);
   });
 
-  it.skip("should propagate updates within the same group", () => {
+  it("should propagate updates within the same group", () => {
     const initial = IMap({ a: 2, b: 4 });
     const src = Reactive.create<IMap<string, number>>(
       graph,
@@ -122,7 +118,7 @@ describe("groupByMap", () => {
     expect(grouped.snapshot.get("even")!.get("b")).toBe(4);
   });
 
-  it.skip("should move entry between groups when key changes", () => {
+  it("should move entry between groups when key changes", () => {
     const initial = IMap({ a: 2, b: 4 });
     const src = Reactive.create<IMap<string, number>>(
       graph,
@@ -222,11 +218,7 @@ describe("groupByMap", () => {
     let fCallCount = 0;
     const grouped = groupByMap<string, number, string>(graph, src, (rx) => {
       fCallCount++;
-      const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-      const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-      );
-      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+      return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
     });
     graph.step();
 
@@ -248,7 +240,7 @@ describe("groupByMap", () => {
     expect(fCallCount).toBe(3);
   });
 
-  it.skip("should delete old group when key change empties it", () => {
+  it("should delete old group when key change empties it", () => {
     const initial = IMap({ a: 2 });
     const src = Reactive.create<IMap<string, number>>(
       graph,

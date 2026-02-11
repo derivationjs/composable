@@ -4,6 +4,7 @@ import { List } from "immutable";
 import { Reactive } from "../reactive.js";
 import { ListOperations, ListCommand } from "../list-operations.js";
 import { mapList } from "../list-reactive.js";
+import { mapPrimitive } from "../map-primitive.js";
 import { PrimitiveOperations } from "../primitive-operations.js";
 
 // Simple operations for number items
@@ -27,16 +28,7 @@ describe("mapList", () => {
 
   it("should map empty list to empty list", () => {
     const mapped = mapList(graph, list, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create<number>(
-        graph,
-        numberOps,
-        doubledChanges,
-        doubled.value,
-      );
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -53,16 +45,7 @@ describe("mapList", () => {
     );
 
     const mapped = mapList(graph, listWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create<number>(
-        graph,
-        numberOps,
-        doubledChanges,
-        doubled.value,
-      );
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -71,16 +54,7 @@ describe("mapList", () => {
 
   it("should handle insert", () => {
     const mapped = mapList(graph, list, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create<number>(
-        graph,
-        numberOps,
-        doubledChanges,
-        doubled.value,
-      );
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -92,16 +66,7 @@ describe("mapList", () => {
 
   it("should handle multiple inserts", () => {
     const mapped = mapList(graph, list, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create<number>(
-        graph,
-        numberOps,
-        doubledChanges,
-        doubled.value,
-      );
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -125,11 +90,7 @@ describe("mapList", () => {
     );
 
     const mapped = mapList(graph, listWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -152,11 +113,7 @@ describe("mapList", () => {
     );
 
     const mapped = mapList(graph, listWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -176,11 +133,7 @@ describe("mapList", () => {
     );
 
     const mapped = mapList(graph, listWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -201,11 +154,7 @@ describe("mapList", () => {
     );
 
     const mapped = mapList(graph, listWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -225,11 +174,7 @@ describe("mapList", () => {
     );
 
     const mapped = mapList(graph, listWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -256,11 +201,7 @@ describe("mapList", () => {
     );
 
     const mapped = mapList(graph, listWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -291,11 +232,7 @@ describe("mapList", () => {
     // If the source is X, mapped should be X * 2
     // If ry.snapshot is stale (initial value), we'd see old value * 2
     const mapped = mapList(graph, listWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -329,11 +266,7 @@ describe("mapList", () => {
 
     // Mapping: add 1000 to the value
     const mapped = mapList(graph, listWithData, (rx) => {
-      const offset = rx.materialized.map((x) => x + 1000);
-      const offsetChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) + 1000 : null,
-      );
-      return Reactive.create(graph, numberOps, offsetChanges, offset.value);
+      return mapPrimitive(graph, rx, (x) => x + 1000);
     });
     graph.step();
 
@@ -360,11 +293,7 @@ describe("mapList", () => {
 
     const mapped = mapList(graph, listWithData, (rx) => {
       fCallCount++;
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 

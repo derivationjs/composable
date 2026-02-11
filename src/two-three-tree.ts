@@ -128,11 +128,11 @@ export class TwoThreeTree<K, V, S> {
   }
 
   /**
-   * Insert at the position where threshold(prefix) first returns true.
-   * prefix is the combined summary of all leaves before the insertion point.
+   * Insert before the first leaf where threshold(accumulated) returns true.
+   * accumulated is the combined summary up to and including the candidate leaf.
    * If threshold never returns true, inserts at the end.
    */
-  insert(id: K, value: V, threshold: (prefix: S) => boolean): void {
+  insert(id: K, value: V, threshold: (accumulated: S) => boolean): void {
     const newLeaf: Leaf<K, V, S> = {
       type: "leaf",
       id,
@@ -150,7 +150,11 @@ export class TwoThreeTree<K, V, S> {
     switch (this.root.type) {
       case "leaf": {
         const oldLeaf = this.root;
-        if (threshold(this.monoid.empty)) {
+        const oldLeafAccumulated = this.monoid.combine(
+          this.monoid.empty,
+          this.measure(oldLeaf.value),
+        );
+        if (threshold(oldLeafAccumulated)) {
           this.root = this.makeBranch2(newLeaf, oldLeaf, 1, null);
         } else {
           this.root = this.makeBranch2(oldLeaf, newLeaf, 1, null);
@@ -179,7 +183,7 @@ export class TwoThreeTree<K, V, S> {
   private insertIntoSubtree(
     branch: Branch<K, V, S>,
     prefix: S,
-    threshold: (prefix: S) => boolean,
+    threshold: (accumulated: S) => boolean,
     newLeaf: Leaf<K, V, S>,
   ): [Node<K, V, S>, Node<K, V, S>] | null {
     let childIndex: number;
@@ -217,7 +221,11 @@ export class TwoThreeTree<K, V, S> {
 
     switch (child.type) {
       case "leaf": {
-        const insertBefore = threshold(childPrefix);
+        const childAccumulated = this.monoid.combine(
+          childPrefix,
+          this.measure(child.value),
+        );
+        const insertBefore = threshold(childAccumulated);
 
         if (branch.type === "branch2") {
           if (childIndex === 0) {

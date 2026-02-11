@@ -10,12 +10,12 @@ export function composeList<T>(
   idList: Reactive<List<ID>>,
   map: Reactive<IMap<ID, T>>,
 ): Reactive<List<T>> {
-  const valueOps = (map.operations as MapOperations<ID, T>).valueOperations;
+  const valueOps = map.operations.valueOperations;
   const listOps = new ListOperations(valueOps);
 
   // Build initial list by looking up each ID in the map
   const initialList = List<T>(
-    idList.materialized.value.map((id) => map.materialized.value.get(id)!),
+    idList.previousSnapshot.map((id) => map.previousSnapshot.get(id)!),
   );
 
   const changes = idList.changes

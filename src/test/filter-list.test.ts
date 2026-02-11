@@ -4,10 +4,10 @@ import { List } from "immutable";
 import { Reactive } from "../reactive.js";
 import { ListOperations, ListCommand } from "../list-operations.js";
 import { filterList } from "../filter-list.js";
+import { mapPrimitive } from "../map-primitive.js";
 import { PrimitiveOperations } from "../primitive-operations.js";
 
 const numberOps = new PrimitiveOperations<number>();
-const boolOps = new PrimitiveOperations<boolean>();
 
 // Helper to create a reactive predicate
 function greaterThan(
@@ -15,15 +15,7 @@ function greaterThan(
   rx: Reactive<number>,
   threshold: number,
 ): Reactive<boolean> {
-  const predValue = rx.materialized.map((x) => x > threshold);
-  const predChanges = rx.changes.map((cmd) => {
-    if (cmd !== null) {
-      const newVal = cmd as number;
-      return newVal > threshold;
-    }
-    return null;
-  });
-  return Reactive.create(graph, boolOps, predChanges, predValue.value);
+  return mapPrimitive(graph, rx, (x) => x > threshold);
 }
 
 describe("filterList", () => {
@@ -66,7 +58,7 @@ describe("filterList", () => {
     expect(filtered.snapshot.toArray()).toEqual([7, 9]);
   });
 
-  it.skip("should handle insert of selected item", () => {
+  it("should handle insert of selected item", () => {
     const filtered = filterList(graph, list, (rx) => greaterThan(graph, rx, 5));
     graph.step();
 
@@ -86,7 +78,7 @@ describe("filterList", () => {
     expect(filtered.snapshot.toArray()).toEqual([]);
   });
 
-  it.skip("should handle mixed inserts", () => {
+  it("should handle mixed inserts", () => {
     const filtered = filterList(graph, list, (rx) => greaterThan(graph, rx, 5));
     graph.step();
 
@@ -187,7 +179,7 @@ describe("filterList", () => {
     expect(filtered.snapshot.toArray()).toEqual([7, 9]);
   });
 
-  it.skip("should only call predicate function once per inserted item", () => {
+  it("should only call predicate function once per inserted item", () => {
     let predicateCallCount = 0;
     const filtered = filterList(graph, list, (rx) => {
       predicateCallCount++;

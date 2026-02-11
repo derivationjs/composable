@@ -1,11 +1,26 @@
 import { List, Map as IMap } from "immutable";
 import { Graph } from "derivation";
 import { Reactive } from "./reactive.js";
-import { Operations, Changes, asBase } from "./operations.js";
 import { decomposeList, ID } from "./decompose-list.js";
-import { groupBy } from "./group-by.js";
-import { MapCommand, MapOperations } from "./map-operations.js";
-import { ListCommand, ListOperations } from "./list-operations.js";
+import { MapOperations } from "./map-operations.js";
+import { ListOperations } from "./list-operations.js";
+import { mapMap } from "./map-reactive.js";
+
+function materializeGroupedList<X, K>(
+  ids: List<ID>,
+  values: IMap<ID, X>,
+  keys: IMap<ID, K>,
+): IMap<K, List<X>> {
+  let grouped = IMap<K, List<X>>();
+  for (const id of ids) {
+    const key = keys.get(id);
+    const value = values.get(id);
+    if (key === undefined || value === undefined) continue;
+    const existing = grouped.get(key) ?? List<X>();
+    grouped = grouped.set(key, existing.push(value));
+  }
+  return grouped;
+}
 
 /**
  * Groups a Reactive<List<X>> into a Reactive<Map<K, List<X>>> based on a key function.
@@ -18,353 +33,31 @@ export function groupByList<X, K>(
   list: Reactive<List<X>>,
   keyFn: (x: Reactive<X>) => Reactive<K>,
 ): Reactive<IMap<K, List<X>>> {
-  // Extract X operations from the list's operations
-  const operations = list.operations.itemOperations;
-  const [structure, decomposedMap] = decomposeList(graph, list);
+  // TODO: Make this fully incremental/stateful by emitting group-level deltas
+  // rather than rebuilding all groups and using a full replace command.
+  const [structure, valuesMap] = decomposeList(graph, list);
+  const keysMap = mapMap(graph, valuesMap, keyFn);
 
-  // Extract per-item update events from map changes
-  const updateEvents = decomposedMap.changes.map((rawCmds) => {
-    const cmds = (rawCmds ?? []) as MapCommand<ID, X>[];
-    return cmds
-      .filter(
-        (c): c is Extract<MapCommand<ID, X>, { type: "update" }> =>
-          c.type === "update",
-      )
-      .map((c) => ({ id: c.key, command: c.command }));
-  });
-
-  // Group updates by ID
-  const groupedUpdates = groupBy(
-    updateEvents,
-    (u) => u.id,
-    (u) => u.command,
+  const initialGroups = materializeGroupedList(
+    structure.previousSnapshot,
+    valuesMap.previousSnapshot,
+    keysMap.previousSnapshot,
   );
 
-  // Map to store reactive state for each ID (persists across updates)
-  const itemReactives = new Map<ID, Reactive<X>>();
-  const keyReactives = new Map<ID, Reactive<K>>();
+  const materialized = structure.materialized
+    .zip(valuesMap.materialized, (ids, values) => ({ ids, values }))
+    .zip(keysMap.materialized, ({ ids, values }, keys) =>
+      materializeGroupedList(ids, values, keys),
+    );
 
-  // Mutable state for initialization (will be copied into accumulate)
-  const currentKeys = new Map<ID, K>(); // Track current key for each ID
-  const groupLists = new Map<K, List<ID>>(); // Track IDs in each group
-
-  // Helper to get or create reactive state for an ID
-  function getOrCreateReactives(id: ID): {
-    rx: Reactive<X>;
-    keyRx: Reactive<K>;
-  } {
-    let rx = itemReactives.get(id);
-    let keyRx = keyReactives.get(id);
-
-    if (!rx || !keyRx) {
-      const initialValue = decomposedMap.snapshot.get(id)!;
-      const itemChanges = groupedUpdates
-        .select(id)
-        .map((cmds) =>
-          cmds.reduce(
-            (acc: Changes<X>, cmd) => asBase(operations).mergeCommands(acc, cmd),
-            null as Changes<X>,
-          ),
-        );
-      rx = Reactive.create(graph, operations, itemChanges, initialValue);
-      keyRx = keyFn(rx);
-
-      itemReactives.set(id, rx);
-      keyReactives.set(id, keyRx);
-    }
-
-    return { rx: rx!, keyRx: keyRx! };
-  }
-
-  // Initialize reactives for all initial IDs and build initial groups
-  const initialGroups = IMap<K, List<X>>().withMutations((map) => {
-    for (const id of structure.snapshot) {
-      const { rx, keyRx } = getOrCreateReactives(id);
-      const key = keyRx.snapshot;
-      currentKeys.set(id, key);
-
-      const existingIdList = groupLists.get(key) || List<ID>();
-      groupLists.set(key, existingIdList.push(id));
-
-      const existingList = map.get(key) || List<X>();
-      map.set(key, existingList.push(rx.snapshot));
-    }
-  });
-
-  // Created BEFORE allChanges — dynamic nodes get indices between this and allChanges
-  const _reactiveEnsurer = structure.changes.map((structCmds) => {
-    const cmds = (structCmds ?? []) as ListCommand<ID>[];
-    for (const cmd of cmds) {
-      if (cmd.type === "insert") {
-        getOrCreateReactives(cmd.value);
-      }
-    }
-  });
-
-  const allChanges = structure.changes
-    .zip(updateEvents, (structCmds, upds) => ({
-      structCmds: (structCmds ?? []) as ListCommand<ID>[],
-      upds,
-    }))
-    .accumulate<{
-      groupLists: Map<K, List<ID>>;
-      currentKeys: Map<ID, K>;
-      currentIds: List<ID>;
-      commands: MapCommand<K, List<X>>[];
-    }>(
-      {
-        groupLists: new Map(groupLists),
-        currentKeys: new Map(currentKeys),
-        currentIds: structure.snapshot,
-        commands: [],
-      },
-      (state, { structCmds, upds }) => {
-        const mapCmds: MapCommand<K, List<X>>[] = [];
-        const groupLists = state.groupLists;
-        const currentKeys = state.currentKeys;
-        let currentIds = state.currentIds;
-
-        // Process structural changes
-        for (const cmd of structCmds) {
-          switch (cmd.type) {
-            case "insert": {
-              const id = cmd.value;
-              const { rx, keyRx } = getOrCreateReactives(id);
-              const key = keyRx.snapshot;
-              currentKeys.set(id, key);
-              currentIds = currentIds.insert(cmd.index, id);
-
-              // Calculate position within group based on source order
-              // Count how many items from this group appear before the inserted item in currentIds
-              const groupIdList = groupLists.get(key) || List<ID>();
-              let insertIndex = 0;
-              for (let i = 0; i < currentIds.size; i++) {
-                const currentId = currentIds.get(i);
-                if (currentId === id) break;
-                if (currentId) {
-                  const currentIdKey = currentKeys.get(currentId);
-                  if (currentIdKey !== undefined && currentIdKey === key) {
-                    insertIndex++;
-                  }
-                }
-              }
-
-              // Add item to its group at the correct position
-              groupLists.set(key, groupIdList.insert(insertIndex, id));
-
-              if (groupIdList.size === 0) {
-                // New group - use set
-                mapCmds.push({ type: "add", key, value: List([rx.snapshot]) });
-              } else {
-                // Existing group - use update with insert command
-                const listCmd: ListCommand<X>[] = [
-                  { type: "insert", index: insertIndex, value: rx.snapshot },
-                ];
-                mapCmds.push({ type: "update", key, command: listCmd });
-              }
-              break;
-            }
-            case "remove": {
-              const id = currentIds.get(cmd.index);
-              if (!id) break;
-              currentIds = currentIds.remove(cmd.index);
-
-              const key = currentKeys.get(id);
-              if (key !== undefined) {
-                const rx = itemReactives.get(id);
-                if (!rx) break;
-
-                // Find index within group
-                const groupIdList = groupLists.get(key);
-                if (!groupIdList) break;
-
-                const indexInGroup = groupIdList.indexOf(id);
-                if (indexInGroup === -1) break;
-
-                // Remove from group tracking
-                const newGroupIdList = groupIdList.remove(indexInGroup);
-                if (newGroupIdList.size === 0) {
-                  groupLists.delete(key);
-                  // Delete the entire group from the map
-                  mapCmds.push({ type: "delete", key });
-                } else {
-                  groupLists.set(key, newGroupIdList);
-                  const listCmd: ListCommand<X>[] = [
-                    { type: "remove", index: indexInGroup },
-                  ];
-                  mapCmds.push({ type: "update", key, command: listCmd });
-                }
-
-                currentKeys.delete(id);
-              }
-              break;
-            }
-            case "move": {
-              const id = currentIds.get(cmd.from);
-              if (!id) break;
-
-              const key = currentKeys.get(id);
-              if (key === undefined) break;
-
-              const groupIdList = groupLists.get(key);
-              if (!groupIdList) break;
-
-              // Find old position within group
-              const oldGroupIndex = groupIdList.indexOf(id);
-              if (oldGroupIndex === -1) break;
-
-              // Update source list order
-              currentIds = currentIds.remove(cmd.from).insert(cmd.to, id);
-
-              // Calculate new position within group based on source order
-              // Count how many items from this group appear before the moved item in currentIds
-              let newGroupIndex = 0;
-              for (let i = 0; i < currentIds.size; i++) {
-                const currentId = currentIds.get(i);
-                if (currentId === id) break;
-                if (currentId) {
-                  const currentIdKey = currentKeys.get(currentId);
-                  if (currentIdKey !== undefined && currentIdKey === key) {
-                    newGroupIndex++;
-                  }
-                }
-              }
-
-              // Update group tracking
-              const newGroupIdList = groupIdList
-                .remove(oldGroupIndex)
-                .insert(newGroupIndex, id);
-              groupLists.set(key, newGroupIdList);
-
-              // Emit move command if position changed within group
-              if (oldGroupIndex !== newGroupIndex) {
-                const listCmd: ListCommand<X>[] = [
-                  { type: "move", from: oldGroupIndex, to: newGroupIndex },
-                ];
-                mapCmds.push({ type: "update", key, command: listCmd });
-              }
-              break;
-            }
-            case "clear": {
-              mapCmds.push({ type: "clear" });
-              currentKeys.clear();
-              groupLists.clear();
-              currentIds = List();
-              break;
-            }
-          }
-        }
-
-        // Process key changes and item updates
-        for (const upd of upds) {
-          const keyRx = keyReactives.get(upd.id);
-          if (!keyRx) continue;
-
-          const oldKey = currentKeys.get(upd.id);
-          const newKey = keyRx.snapshot;
-
-          if (oldKey !== newKey) {
-            // Item moved to a different group
-            const rx = itemReactives.get(upd.id);
-            if (!rx) continue;
-
-            if (oldKey !== undefined) {
-              // Remove from old group
-              const oldGroupIdList = groupLists.get(oldKey);
-              if (oldGroupIdList) {
-                const indexInOldGroup = oldGroupIdList.indexOf(upd.id);
-                if (indexInOldGroup !== -1) {
-                  const newOldGroupIdList =
-                    oldGroupIdList.remove(indexInOldGroup);
-                  if (newOldGroupIdList.size === 0) {
-                    groupLists.delete(oldKey);
-                    mapCmds.push({ type: "delete", key: oldKey });
-                  } else {
-                    groupLists.set(oldKey, newOldGroupIdList);
-                    const removeListCmd: ListCommand<X>[] = [
-                      { type: "remove", index: indexInOldGroup },
-                    ];
-                    mapCmds.push({
-                      type: "update",
-                      key: oldKey,
-                      command: removeListCmd,
-                    });
-                  }
-                }
-              }
-            }
-
-            // Add to new group at correct position based on source order
-            const newGroupIdList = groupLists.get(newKey) || List<ID>();
-
-            // Calculate position: count items from new group that appear before this item in source
-            let insertIndex = 0;
-            const itemSourceIndex = currentIds.indexOf(upd.id);
-            for (let i = 0; i < itemSourceIndex; i++) {
-              const currentId = currentIds.get(i);
-              if (currentId) {
-                const currentIdKey = currentKeys.get(currentId);
-                if (currentIdKey !== undefined && currentIdKey === newKey) {
-                  insertIndex++;
-                }
-              }
-            }
-
-            groupLists.set(newKey, newGroupIdList.insert(insertIndex, upd.id));
-
-            if (newGroupIdList.size === 0) {
-              // New group - use set
-              mapCmds.push({
-                type: "add",
-                key: newKey,
-                value: List([rx.snapshot]),
-              });
-            } else {
-              // Existing group - use update with insert command
-              const insertListCmd: ListCommand<X>[] = [
-                { type: "insert", index: insertIndex, value: rx.snapshot },
-              ];
-              mapCmds.push({
-                type: "update",
-                key: newKey,
-                command: insertListCmd,
-              });
-            }
-            currentKeys.set(upd.id, newKey);
-          } else if (newKey !== undefined) {
-            // Item updated within same group
-            const rx = itemReactives.get(upd.id);
-            if (!rx) continue;
-
-            const groupIdList = groupLists.get(newKey);
-            if (!groupIdList) continue;
-
-            const indexInGroup = groupIdList.indexOf(upd.id);
-            if (indexInGroup === -1) continue;
-
-            const updateListCmd: ListCommand<X>[] = [
-              { type: "update", index: indexInGroup, command: upd.command },
-            ];
-            mapCmds.push({
-              type: "update",
-              key: newKey,
-              command: updateListCmd,
-            });
-          }
-        }
-
-        return {
-          groupLists,
-          currentKeys,
-          currentIds,
-          commands: mapCmds,
-        };
-      },
-    )
-    .map((state) => state.commands);
-
-  const listOps = new ListOperations(operations);
+  const listOps = new ListOperations(list.operations.itemOperations);
   const mapOps = new MapOperations<K, List<X>>(listOps);
+  const allChanges = materialized
+    .delay(initialGroups)
+    .zip(materialized, (previous, current) => {
+      if (previous.equals(current)) return null;
+      return mapOps.replaceCommand(current);
+    });
 
   return Reactive.create<IMap<K, List<X>>>(
     graph,

@@ -4,14 +4,12 @@ import { List, Map as IMap } from "immutable";
 import { Reactive } from "../reactive.js";
 import { ListOperations, ListCommand } from "../list-operations.js";
 import { groupByList } from "../group-by-list.js";
+import { mapPrimitive } from "../map-primitive.js";
 import { Operations } from "../operations.js";
 import { PrimitiveOperations } from "../primitive-operations.js";
 
 // Simple operations for number items
 const numberOps = new PrimitiveOperations<number>();
-
-// Simple operations for string items
-const stringOps = new PrimitiveOperations<string>();
 
 describe("groupByList", () => {
   let graph: Graph;
@@ -31,11 +29,7 @@ describe("groupByList", () => {
 
   it("should group empty list into empty map", () => {
     const grouped = groupByList<number, string>(graph, list, (rx) => {
-      const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-      const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-      );
-      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+      return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
     });
     graph.step();
 
@@ -52,11 +46,7 @@ describe("groupByList", () => {
     );
 
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
-      const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-      const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-      );
-      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+      return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
     });
     graph.step();
 
@@ -64,7 +54,7 @@ describe("groupByList", () => {
     expect(grouped.snapshot.get("even")?.toArray()).toEqual([2, 4]);
   });
 
-  it.skip("should handle inserting items into groups", () => {
+  it("should handle inserting items into groups", () => {
     const initialList = List([1, 2]);
     const listWithData = Reactive.create<List<number>>(
       graph,
@@ -74,11 +64,7 @@ describe("groupByList", () => {
     );
 
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
-      const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-      const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-      );
-      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+      return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
     });
     graph.step();
 
@@ -110,11 +96,7 @@ describe("groupByList", () => {
     );
 
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
-      const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-      const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-      );
-      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+      return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
     });
     graph.step();
 
@@ -146,11 +128,7 @@ describe("groupByList", () => {
     );
 
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
-      const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-      const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-      );
-      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+      return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
     });
     graph.step();
 
@@ -163,7 +141,7 @@ describe("groupByList", () => {
     expect(grouped.snapshot.get("even")?.toArray()).toEqual([6, 4]);
   });
 
-  it.skip("should handle items moving between groups", () => {
+  it("should handle items moving between groups", () => {
     const initialList = List([2, 4]);
     const listWithData = Reactive.create<List<number>>(
       graph,
@@ -173,11 +151,7 @@ describe("groupByList", () => {
     );
 
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
-      const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-      const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-      );
-      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+      return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
     });
     graph.step();
 
@@ -202,11 +176,7 @@ describe("groupByList", () => {
     );
 
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
-      const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-      const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-      );
-      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+      return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
     });
     graph.step();
 
@@ -218,7 +188,7 @@ describe("groupByList", () => {
     expect(grouped.snapshot.size).toBe(0);
   });
 
-  it.skip("should maintain source list order within groups after insert", () => {
+  it("should maintain source list order within groups after insert", () => {
     // Start with [1, 3]
     // Grouped: odd=[1, 3]
     const initialList = List([1, 3]);
@@ -230,11 +200,7 @@ describe("groupByList", () => {
     );
 
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
-      const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-      const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-      );
-      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+      return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
     });
     graph.step();
 
@@ -268,7 +234,7 @@ describe("groupByList", () => {
     expect(grouped.snapshot.get("odd")?.toArray()).toEqual([1, 5, 3]);
   });
 
-  it.skip("should maintain source order when item moves to new group mid-list", () => {
+  it("should maintain source order when item moves to new group mid-list", () => {
     // Source list: [1, 3, 5, 2, 4]
     // Grouped: odd=[1, 3, 5], even=[2, 4]
     const initialList = List([1, 3, 5, 2, 4]);
@@ -280,11 +246,7 @@ describe("groupByList", () => {
     );
 
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
-      const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-      const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-      );
-      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+      return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
     });
     graph.step();
 
@@ -324,11 +286,7 @@ describe("groupByList", () => {
     );
 
     const grouped = groupByList<number, string>(graph, listWithData, (rx) => {
-      const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-      const keyChanges = rx.changes.map((cmd) =>
-        cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-      );
-      return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+      return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
     });
     graph.step();
 

@@ -32,7 +32,7 @@ export {
 export { sequenceList, mapList } from "./list-reactive.js";
 
 // Map reactive operations
-export { sequenceMap, mapMap } from "./map-reactive.js";
+export { mapMap } from "./map-reactive.js";
 export { singletonMap } from "./singleton-map.js";
 
 // Primitive reactive operations

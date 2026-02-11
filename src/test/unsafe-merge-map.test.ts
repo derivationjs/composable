@@ -11,19 +11,19 @@ const mapOps = new MapOperations<string, number>(numberOps);
 
 describe("unsafeMergeMap", () => {
   let graph: Graph;
-  let changesA: Input<MapCommand<string, number>[]>;
-  let changesB: Input<MapCommand<string, number>[]>;
+  let changesA: Input<MapCommand<string, number>[] | null>;
+  let changesB: Input<MapCommand<string, number>[] | null>;
   let mapA: Reactive<IMap<string, number>>;
   let mapB: Reactive<IMap<string, number>>;
 
   beforeEach(() => {
     graph = new Graph();
-    changesA = inputValue(graph, [] as MapCommand<string, number>[]);
-    changesB = inputValue(graph, [] as MapCommand<string, number>[]);
+    changesA = inputValue(graph, null as MapCommand<string, number>[] | null);
+    changesB = inputValue(graph, null as MapCommand<string, number>[] | null);
   });
 
   function createMap(
-    changes: Input<MapCommand<string, number>[]>,
+    changes: Input<MapCommand<string, number>[] | null>,
     initial: IMap<string, number>,
   ) {
     return Reactive.create<IMap<string, number>>(graph, mapOps, changes, initial);

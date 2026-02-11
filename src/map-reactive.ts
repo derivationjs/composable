@@ -1,32 +1,12 @@
 import { Map as IMap } from "immutable";
-import { Graph, ReactiveValue, constantValue } from "derivation";
+import { Graph, ReactiveValue } from "derivation";
 import { Reactive } from "./reactive.js";
 import { Operations, asBase, Changes } from "./operations.js";
 import { MapCommand, MapOperations } from "./map-operations.js";
 import { operationsProxy } from "./operations-proxy.js";
 import { groupBy } from "./group-by.js";
-import { joinReactive } from "./join-reactive.js";
-import { TwoThreeTree, Monoid } from "./two-three-tree.js";
-import { unsafeMergeMap, emptyReactiveMap } from "./unsafe-merge-map.js";
-import { singletonMap } from "./singleton-map.js";
-
-/**
- * Converts a Map of reactive values into a reactive Map.
- *
- * This "sequences" the reactive values - whenever any of the inner
- * reactive values change, the outer reactive map updates.
- */
-export function sequenceMap<K, V>(
-  graph: Graph,
-  map: IMap<K, ReactiveValue<V>>,
-): ReactiveValue<IMap<K, V>> {
-  return map.reduce(
-    (acc: ReactiveValue<IMap<K, V>>, rv: ReactiveValue<V>, key: K) => {
-      return acc.zip(rv, (map, v) => map.set(key, v));
-    },
-    constantValue(graph, IMap()),
-  );
-}
+import { PrimitiveOperations } from "./primitive-operations.js";
+import { sequenceMap } from "./sequence-map.js";
 
 function takeRightWhile<X>(
   array: X[],
@@ -47,8 +27,8 @@ function takeRightWhile<X>(
 function decomposeChanges<K, V>(
   changes: ReactiveValue<MapCommand<K, V>[]>,
 ): [ReactiveValue<boolean>, ReactiveValue<MapCommand<K, V>[]>] {
-  let result = changes.map((changes) =>
-    takeRightWhile(changes, (change) => change.type !== "clear"),
+  const result = changes.map((changeSet) =>
+    takeRightWhile(changeSet, (change) => change.type !== "clear"),
   );
   return [result.map((x) => x[0] !== null), result.map((x) => x[1])];
 }
@@ -61,7 +41,6 @@ function decomposeChanges<K, V>(
  * Updates to existing values flow through the reactive chain without
  * calling f again.
  */
-
 export function mapMap<K, X, Y>(
   graph: Graph,
   map: Reactive<IMap<K, X>>,
@@ -69,8 +48,6 @@ export function mapMap<K, X, Y>(
 ): Reactive<IMap<K, Y>> {
   const valueOperations = map.operations.valueOperations;
   const valueOpsBase = asBase(valueOperations);
-  const yValueOps = operationsProxy({} as Operations<Y>);
-  const yMapOps = new MapOperations<K, Y>(yValueOps);
 
   const [cleared, lastChanges] = decomposeChanges(
     map.changes.map((changes) => changes ?? []),
@@ -82,6 +59,7 @@ export function mapMap<K, X, Y>(
   type Add = Extract<MapCommand<K, X>, { type: "add" }>;
   type Delete = Extract<MapCommand<K, X>, { type: "delete" }>;
   type Update = Extract<MapCommand<K, X>, { type: "update" }>;
+
   const keyState = newChanges.map((cmds) => {
     let grouped = IMap<K, MapCommand<K, X>[]>();
     for (const cmd of cmds) {
@@ -120,15 +98,11 @@ export function mapMap<K, X, Y>(
     (entry) => ({ structural: entry.structural, changes: entry.changes }),
   );
 
-  const createReactive = (key: K, initialValue: X): Reactive<IMap<K, Y>> => {
+  const yValueOps = operationsProxy({} as Operations<Y>);
+  const createReactive = (key: K, initialValue: X): Reactive<Y> => {
     const itemChanges = groupedChanges.select(key).map((entries) => {
       if (entries.length === 0) return null as Changes<X>;
-      const { structural, changes } = entries[0];
-      if (structural !== null && structural.type === "add") {
-        const replace = valueOpsBase.replaceCommand(structural.value);
-        return valueOpsBase.mergeCommands(replace, changes);
-      }
-      return changes;
+      return entries[0].changes;
     });
     const rx = Reactive.create(
       graph,
@@ -138,46 +112,49 @@ export function mapMap<K, X, Y>(
     );
     const ry = f(rx, key);
     yValueOps.setTarget(ry.operations);
-    return singletonMap(graph, key, ry);
+    return ry;
   };
 
-  // TODO: Order reactives by the key hashcode given by hash from immutable.
-  const mergeMonoid: Monoid<Reactive<IMap<K, Y>>> = {
-    empty: emptyReactiveMap(graph, yMapOps),
-    combine: (a, b) => unsafeMergeMap(graph, a, b, yMapOps),
-  };
-
-  const tree = new TwoThreeTree<K, Reactive<IMap<K, Y>>, Reactive<IMap<K, Y>>>(
-    mergeMonoid,
-    (v) => v,
-  );
-
-  for (const [key, value] of map.snapshot.entries()) {
-    tree.insert(key, createReactive(key, value), () => false);
+  let current = IMap<K, Reactive<Y>>();
+  for (const [key, value] of map.previousSnapshot.entries()) {
+    current = current.set(key, createReactive(key, value));
   }
 
-  const treeState = cleared
-    .zip(keyState, (cleared, keys) => [cleared, keys] as const)
-    .accumulate([tree], ([tree], [cleared, keys]) => {
-      if (cleared) {
-        for (const { id } of [...tree]) {
-          tree.remove(id);
-        }
+  const reactiveValueOps = new PrimitiveOperations<Reactive<Y>>();
+  const reactiveMapOps = new MapOperations<K, Reactive<Y>>(reactiveValueOps);
+
+  const yMapChanges = cleared
+    .zip(keyState, (wasCleared, keys) => [wasCleared, keys] as const)
+    .map(([wasCleared, keys]) => {
+      let commands: MapCommand<K, Reactive<Y>>[] = [];
+
+      if (wasCleared) {
+        current = IMap<K, Reactive<Y>>();
+        commands = [{ type: "clear" }];
       }
 
-      for (const [key, [structural, changes]] of keys) {
+      for (const [key, [structural]] of keys) {
         if (structural !== null && structural.type === "delete") {
-          tree.remove(key);
+          if (current.has(key)) {
+            current = current.remove(key);
+          }
+          commands.push({ type: "delete", key });
         } else if (structural !== null && structural.type === "add") {
-          tree.remove(key);
-          const newReactive = createReactive(key, structural.value);
-          tree.insert(key, newReactive, () => false);
+          const nextReactive = createReactive(key, structural.value);
+          current = current.set(key, nextReactive);
+          commands.push({ type: "add", key, value: nextReactive });
         }
       }
 
-      return [tree];
-    })
-    .map(([tree]) => tree.summary);
+      return commands.length === 0 ? null : commands;
+    });
 
-  return joinReactive(treeState);
+  const mappedReactives = Reactive.create<IMap<K, Reactive<Y>>>(
+    graph,
+    reactiveMapOps,
+    yMapChanges,
+    current,
+  );
+
+  return sequenceMap(graph, mappedReactives);
 }

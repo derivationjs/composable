@@ -8,6 +8,7 @@ import { flattenMap } from "../flatten-map.js";
 import { PrimitiveOperations } from "../primitive-operations.js";
 import { getKeyMap } from "../get-key-map.js";
 import { mapPrimitive } from "../map-primitive.js";
+import { singletonMap } from "../singleton-map.js";
 
 // Simple operations for number values
 const numberOps = new PrimitiveOperations<number>();
@@ -30,11 +31,7 @@ describe("mapMap", () => {
 
   it("should map empty map to empty map", () => {
     const mapped = mapMap<string, number, number>(graph, map, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -51,11 +48,7 @@ describe("mapMap", () => {
     );
 
     const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -76,11 +69,7 @@ describe("mapMap", () => {
 
   it("should handle multiple sets", () => {
     const mapped = mapMap<string, number, number>(graph, map, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -124,11 +113,7 @@ describe("mapMap", () => {
     );
 
     const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -153,11 +138,7 @@ describe("mapMap", () => {
     );
 
     const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -179,11 +160,7 @@ describe("mapMap", () => {
     );
 
     const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -203,11 +180,7 @@ describe("mapMap", () => {
     );
 
     const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -264,11 +237,7 @@ describe("mapMap", () => {
 
     const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
       fCallCount++;
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -309,11 +278,7 @@ describe("mapMap", () => {
     );
 
     const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -339,11 +304,7 @@ describe("mapMap", () => {
     );
 
     const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -359,11 +320,7 @@ describe("mapMap", () => {
 
   it("should not apply updates from a deleted key to a new value added later in the batch", () => {
     const mapped = mapMap<string, number, number>(graph, map, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -388,11 +345,7 @@ describe("mapMap", () => {
     );
 
     const mapped = mapMap<string, number, number>(graph, mapWithData, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -428,11 +381,7 @@ describe("mapMap", () => {
       mapWithData,
       (rx, key) => {
         keysReceived.push(key);
-        const doubled = rx.materialized.map((x) => x * 2);
-        const doubledChanges = rx.changes.map((cmd) =>
-          cmd !== null ? (cmd as number) * 2 : null,
-        );
-        return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
       },
     );
     graph.step();
@@ -454,16 +403,7 @@ describe("mapMap", () => {
 
   it("should handle update to a dynamically added key", () => {
     const mapped = mapMap<string, number, number>(graph, map, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create<number>(
-        graph,
-        numberOps,
-        doubledChanges,
-        doubled.value,
-      );
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -481,6 +421,81 @@ describe("mapMap", () => {
     // stale (null) because yChanges evaluates before the dynamically
     // created rx/ry chain, so the update is silently dropped.
     expect(mapped.snapshot.get("x")).toBe(40);
+  });
+
+  it("should propagate nested add when composing mapMap over map values", () => {
+    const innerOps = new MapOperations<string, number>(numberOps);
+    const outerChanges = inputValue(
+      graph,
+      [] as MapCommand<string, IMap<string, number>>[],
+    );
+    const outerMap = Reactive.create<IMap<string, IMap<string, number>>>(
+      graph,
+      new MapOperations<string, IMap<string, number>>(innerOps),
+      outerChanges,
+      IMap({
+        row1: IMap({ a: 1 }),
+      }),
+    );
+
+    const mapped = mapMap<string, IMap<string, number>, IMap<string, number>>(
+      graph,
+      outerMap,
+      (innerMapRx) =>
+        mapMap<string, number, number>(graph, innerMapRx, (valueRx) =>
+          mapPrimitive(graph, valueRx, (value) => value * 2),
+        ),
+    );
+    graph.step();
+
+    expect(mapped.snapshot.get("row1")?.get("a")).toBe(2);
+    expect(mapped.snapshot.get("row1")?.has("b")).toBe(false);
+
+    const nestedAdd: MapCommand<string, number>[] = [
+      { type: "add", key: "b", value: 3 },
+    ];
+    outerChanges.push([{ type: "update", key: "row1", command: nestedAdd }]);
+    graph.step();
+
+    expect(mapped.snapshot.get("row1")?.get("b")).toBe(6);
+    expect(mapped.snapshot.get("row1")?.get("a")).toBe(2);
+  });
+
+  it("should propagate add through chained mapMap without nested map values", () => {
+    const first = mapMap<string, number, number>(graph, map, (rx) =>
+      mapPrimitive(graph, rx, (value) => value * 2),
+    );
+    const second = mapMap<string, number, number>(graph, first, (rx) =>
+      mapPrimitive(graph, rx, (value) => value + 1),
+    );
+    graph.step();
+
+    changes.push([{ type: "add", key: "x", value: 5 }]);
+    graph.step();
+
+    expect(first.snapshot.get("x")).toBe(10);
+    expect(second.snapshot.get("x")).toBe(11);
+  });
+
+  it("should expose produced changes from a single mapMap", () => {
+    const mapped = mapMap<string, number, number>(graph, map, (rx) =>
+      mapPrimitive(graph, rx, (value) => value * 2),
+    );
+    graph.step();
+
+    changes.push([{ type: "add", key: "x", value: 5 }]);
+    graph.step();
+
+    expect(mapped.snapshot.get("x")).toBe(10);
+    expect(mapped.changes.value).toEqual([{ type: "add", key: "x", value: 10 }]);
+
+    changes.push([{ type: "update", key: "x", command: 8 }]);
+    graph.step();
+
+    expect(mapped.snapshot.get("x")).toBe(16);
+    expect(mapped.changes.value).toEqual([
+      { type: "update", key: "x", command: 16 },
+    ]);
   });
 
   it("should propagate changes from external reactives used in transform", () => {
@@ -540,27 +555,10 @@ describe("mapMap", () => {
     // mapMap starting from an empty map, where f returns a Reactive<Map>,
     // then piped into flattenMap — reproduces the bug where mapMap leaves
     // valueOperations as undefined because getOrCreateY is never called.
-    const innerNumberOps = new PrimitiveOperations<number>();
-    const innerOps = new MapOperations<string, number>(innerNumberOps);
-
     const mapped = mapMap<string, number, IMap<string, number>>(
       graph,
       map,
-      (rx) => {
-        // Transform each number into a single-entry inner map
-        const innerMap = rx.materialized.map((x) =>
-          IMap<string, number>({ val: x }),
-        );
-        const innerChanges = rx.changes.map(
-          () => [] as MapCommand<string, number>[],
-        );
-        return Reactive.create<IMap<string, number>>(
-          graph,
-          innerOps,
-          innerChanges,
-          innerMap.value,
-        );
-      },
+      (rx) => singletonMap(graph, "val", rx),
     );
 
     // This is where the crash happens: flattenMap accesses

@@ -12,10 +12,9 @@ import { decomposeList } from "../decompose-list.js";
 import { composeList } from "../compose-list.js";
 import { mapMap } from "../map-reactive.js";
 import { getKeyMap } from "../get-key-map.js";
+import { mapPrimitive } from "../map-primitive.js";
 
 const numberOps = new PrimitiveOperations<number>();
-const boolOps = new PrimitiveOperations<boolean>();
-const stringOps = new PrimitiveOperations<string>();
 
 // Helper: creates a reactive boolean predicate (value > threshold)
 function greaterThan(
@@ -23,23 +22,12 @@ function greaterThan(
   rx: Reactive<number>,
   threshold: number,
 ): Reactive<boolean> {
-  const predValue = rx.materialized.map((x) => x > threshold);
-  const predChanges = rx.changes.map((cmd) => {
-    if (cmd !== null) {
-      return (cmd as number) > threshold;
-    }
-    return null;
-  });
-  return Reactive.create(graph, boolOps, predChanges, predValue.value);
+  return mapPrimitive(graph, rx, (x) => x > threshold);
 }
 
 // Helper: creates a reactive key function (even/odd)
 function evenOddKey(graph: Graph, rx: Reactive<number>): Reactive<string> {
-  const key = rx.materialized.map((n) => (n % 2 === 0 ? "even" : "odd"));
-  const keyChanges = rx.changes.map((cmd) =>
-    cmd !== null ? ((cmd as number) % 2 === 0 ? "even" : "odd") : null,
-  );
-  return Reactive.create<string>(graph, stringOps, keyChanges, key.value);
+  return mapPrimitive(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
 }
 
 // =============================================================================
@@ -60,7 +48,7 @@ describe("filterList - predicate toggle for initial items", () => {
     changes = inputValue(graph, [] as ListCommand<number>[]);
   });
 
-  it.skip("should handle predicate false→true for initial item", () => {
+  it("should handle predicate false→true for initial item", () => {
     const initialList = List([3, 7]);
     const list = Reactive.create<List<number>>(
       graph,
@@ -81,7 +69,7 @@ describe("filterList - predicate toggle for initial items", () => {
     expect(filtered.snapshot.toArray()).toEqual([10, 7]);
   });
 
-  it.skip("should handle predicate true→false for initial item", () => {
+  it("should handle predicate true→false for initial item", () => {
     const initialList = List([3, 7]);
     const list = Reactive.create<List<number>>(
       graph,
@@ -119,7 +107,7 @@ describe("filterList - predicate toggle for dynamically inserted items", () => {
     );
   });
 
-  it.skip("should handle predicate false→true for dynamically inserted item", () => {
+  it("should handle predicate false→true for dynamically inserted item", () => {
     const filtered = filterList(graph, list, (rx) => greaterThan(graph, rx, 5));
     graph.step();
 
@@ -137,7 +125,7 @@ describe("filterList - predicate toggle for dynamically inserted items", () => {
     expect(filtered.snapshot.toArray()).toEqual([10]);
   });
 
-  it.skip("should handle predicate true→false for dynamically inserted item", () => {
+  it("should handle predicate true→false for dynamically inserted item", () => {
     const filtered = filterList(graph, list, (rx) => greaterThan(graph, rx, 5));
     graph.step();
 
@@ -156,7 +144,7 @@ describe("filterList - predicate toggle for dynamically inserted items", () => {
     expect(filtered.snapshot.toArray()).toEqual([]);
   });
 
-  it.skip("should handle multiple dynamic items with predicate toggles", () => {
+  it("should handle multiple dynamic items with predicate toggles", () => {
     const filtered = filterList(graph, list, (rx) => greaterThan(graph, rx, 5));
     graph.step();
 
@@ -203,7 +191,7 @@ describe("groupByList - key change for dynamically inserted items", () => {
     );
   });
 
-  it.skip("should move dynamically inserted item between groups on key change", () => {
+  it("should move dynamically inserted item between groups on key change", () => {
     const grouped = groupByList<number, string>(graph, list, (rx) =>
       evenOddKey(graph, rx),
     );
@@ -226,7 +214,7 @@ describe("groupByList - key change for dynamically inserted items", () => {
     expect(grouped.snapshot.has("even")).toBe(false);
   });
 
-  it.skip("should create new group when dynamically inserted item changes key", () => {
+  it("should create new group when dynamically inserted item changes key", () => {
     const grouped = groupByList<number, string>(graph, list, (rx) =>
       evenOddKey(graph, rx),
     );
@@ -279,7 +267,7 @@ describe("groupByMap - updates to dynamically added entries", () => {
     );
   });
 
-  it.skip("should propagate value update for dynamically added entry (same group)", () => {
+  it("should propagate value update for dynamically added entry (same group)", () => {
     const grouped = groupByMap(graph, source, (rx) => evenOddKey(graph, rx));
     graph.step();
 
@@ -298,7 +286,7 @@ describe("groupByMap - updates to dynamically added entries", () => {
     expect(grouped.snapshot.get("even")!.get("a")).toBe(4);
   });
 
-  it.skip("should move dynamically added entry between groups on key change", () => {
+  it("should move dynamically added entry between groups on key change", () => {
     const grouped = groupByMap(graph, source, (rx) => evenOddKey(graph, rx));
     graph.step();
 
@@ -319,7 +307,7 @@ describe("groupByMap - updates to dynamically added entries", () => {
     expect(grouped.snapshot.has("even")).toBe(false);
   });
 
-  it.skip("should handle multiple dynamically added entries with updates", () => {
+  it("should handle multiple dynamically added entries with updates", () => {
     const grouped = groupByMap(graph, source, (rx) => evenOddKey(graph, rx));
     graph.step();
 
@@ -491,11 +479,7 @@ describe("mapMap + getKeyMap - operations proxy on empty map", () => {
     );
 
     const mapped = mapMap<string, number, number>(graph, source, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 
@@ -519,11 +503,7 @@ describe("mapMap + getKeyMap - operations proxy on empty map", () => {
     );
 
     const mapped = mapMap<string, number, number>(graph, source, (rx) => {
-      const doubled = rx.materialized.map((x) => x * 2);
-      const doubledChanges = rx.changes.map((cmd) =>
-        cmd !== null ? (cmd as number) * 2 : null,
-      );
-      return Reactive.create(graph, numberOps, doubledChanges, doubled.value);
+      return mapPrimitive(graph, rx, (x) => x * 2);
     });
     graph.step();
 

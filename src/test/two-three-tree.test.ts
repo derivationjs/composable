@@ -21,15 +21,15 @@ function insertAt<K, V>(
   tree: TwoThreeTree<K, V, Summary>,
   index: number,
   id: K,
-  value: V
+  value: V,
 ) {
-  tree.insert(id, value, (prefix) => prefix.size >= index);
+  tree.insert(id, value, (prefix) => prefix.size > index);
 }
 
 // Helper to find by index
 function getByIndex<K, V>(
   tree: TwoThreeTree<K, V, Summary>,
-  index: number
+  index: number,
 ): { id: K; value: V } | undefined {
   return tree.findByThreshold((acc) => acc.size > index);
 }
@@ -37,7 +37,7 @@ function getByIndex<K, V>(
 // Helper to get index by id
 function getIndexById<K, V>(
   tree: TwoThreeTree<K, V, Summary>,
-  id: K
+  id: K,
 ): number | undefined {
   const prefix = tree.getPrefixSummaryById(id);
   return prefix?.size;
@@ -426,6 +426,29 @@ describe("TwoThreeTree", () => {
   });
 
   describe("threshold-based operations", () => {
+    it("maintains sorted order with maxKey-only prefix threshold insertion", () => {
+      type MaxKeySummary = { maxKey: number };
+      const maxKeyMonoid: Monoid<MaxKeySummary> = {
+        empty: { maxKey: Number.NEGATIVE_INFINITY },
+        combine: (a, b) => ({ maxKey: Math.max(a.maxKey, b.maxKey) }),
+      };
+
+      const tree = new TwoThreeTree<string, number, MaxKeySummary>(
+        maxKeyMonoid,
+        (v) => ({ maxKey: v }),
+      );
+
+      const insertByMaxKey = (id: string, keyHash: number) => {
+        tree.insert(id, keyHash, (prefix) => prefix.maxKey > keyHash);
+      };
+
+      insertByMaxKey("k10", 10);
+      insertByMaxKey("k20", 20);
+      insertByMaxKey("k15", 15);
+
+      expect([...tree].map((x) => x.value)).toEqual([10, 15, 20]);
+    });
+
     it("should find by custom threshold", () => {
       // Use a summary that tracks cumulative value
       type ValueSum = { size: number; valueSum: number };
@@ -440,11 +463,11 @@ describe("TwoThreeTree", () => {
 
       const tree = new TwoThreeTree<string, number, ValueSum>(
         valueMonoid,
-        valueMeasure
+        valueMeasure,
       );
-      tree.insert("a", 10, (p) => p.size >= 0);
-      tree.insert("b", 20, (p) => p.size >= 1);
-      tree.insert("c", 30, (p) => p.size >= 2);
+      tree.insert("a", 10, (p) => p.size > 0);
+      tree.insert("b", 20, (p) => p.size > 1);
+      tree.insert("c", 30, (p) => p.size > 2);
 
       // Find first item where cumulative value > 25
       const result = tree.findByThreshold((acc) => acc.valueSum > 25);

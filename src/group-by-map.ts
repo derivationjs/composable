@@ -1,9 +1,23 @@
 import { Map as IMap } from "immutable";
 import { Graph } from "derivation";
 import { Reactive } from "./reactive.js";
-import { Operations, Changes, Primitive, asBase } from "./operations.js";
-import { groupBy } from "./group-by.js";
-import { MapCommand, MapOperations } from "./map-operations.js";
+import { Primitive, Operations } from "./operations.js";
+import { MapOperations } from "./map-operations.js";
+import { mapMap } from "./map-reactive.js";
+
+function materializeGroupedMap<ID, T, K>(
+  values: IMap<ID, T>,
+  keys: IMap<ID, K>,
+): IMap<K, IMap<ID, T>> {
+  let grouped = IMap<K, IMap<ID, T>>();
+  for (const [id, value] of values) {
+    const key = keys.get(id);
+    if (key === undefined) continue;
+    const existing = grouped.get(key) ?? IMap<ID, T>();
+    grouped = grouped.set(key, existing.set(id, value));
+  }
+  return grouped;
+}
 
 /**
  * Groups a Reactive<Map<ID, T>> into a Reactive<Map<K, Map<ID, T>>> based on a key function.
@@ -20,252 +34,29 @@ export function groupByMap<ID, T, K>(
     ? [error: "K must be a primitive type, not a collection"]
     : []
 ): Reactive<IMap<K, IMap<ID, T>>> {
-  const valueOperations = source.operations.valueOperations;
-
-  // Group update commands by key (ID)
-  const groupedUpdates = groupBy(
-    source.changes.map((cmds) => {
-      const commands = (cmds ?? []) as MapCommand<ID, T>[];
-      return commands
-        .filter(
-          (cmd): cmd is MapCommand<ID, T> & { type: "update" } =>
-            cmd.type === "update",
-        )
-        .map((cmd) => ({ key: cmd.key, command: cmd.command }));
-    }),
-    (u) => u.key,
-    (u) => u.command,
+  // TODO: Make this fully incremental/stateful by producing minimal outer/inner
+  // map commands instead of rematerializing grouped output and replacing it.
+  const keys = mapMap(graph, source, (rx) => f(rx));
+  const initialGroups = materializeGroupedMap(
+    source.previousSnapshot,
+    keys.previousSnapshot,
   );
 
-  // Per-ID reactive state
-  const itemReactives = new Map<ID, Reactive<T>>();
-  const keyReactives = new Map<ID, Reactive<K>>();
-
-  // Mutable tracking state
-  const currentKeys = new Map<ID, K>();
-  const groupSets = new Map<K, Set<ID>>();
-
-  function getOrCreateReactives(
-    id: ID,
-    initialValue: T,
-  ): { rx: Reactive<T>; keyRx: Reactive<K> } {
-    let rx = itemReactives.get(id);
-    let keyRx = keyReactives.get(id);
-
-    if (!rx || !keyRx) {
-      const itemChanges = groupedUpdates
-        .select(id)
-        .map((cmds) =>
-          cmds.reduce(
-            (acc: Changes<T>, cmd) => asBase(valueOperations).mergeCommands(acc, cmd),
-            null as Changes<T>,
-          ),
-        );
-      rx = Reactive.create(graph, valueOperations, itemChanges, initialValue);
-      keyRx = f(rx);
-
-      itemReactives.set(id, rx);
-      keyReactives.set(id, keyRx);
-    }
-
-    return { rx: rx!, keyRx: keyRx! };
-  }
-
-  function addToGroup(key: K, id: ID): void {
-    let set = groupSets.get(key);
-    if (!set) {
-      set = new Set();
-      groupSets.set(key, set);
-    }
-    set.add(id);
-  }
-
-  function removeFromGroup(key: K, id: ID): boolean {
-    const set = groupSets.get(key);
-    if (!set) return true;
-    set.delete(id);
-    if (set.size === 0) {
-      groupSets.delete(key);
-      return true; // group is now empty
-    }
-    return false;
-  }
-
-  // Initialize reactives for all initial entries and build initial groups
-  const initialGroups = IMap<K, IMap<ID, T>>().withMutations((map) => {
-    for (const [id, value] of source.snapshot) {
-      const { rx, keyRx } = getOrCreateReactives(id, value);
-      const key = keyRx.snapshot;
-      currentKeys.set(id, key);
-      addToGroup(key, id);
-
-      const existing = map.get(key) || IMap<ID, T>();
-      map.set(key, existing.set(id, rx.snapshot));
-    }
-  });
-
-  const innerMapOps = new MapOperations<ID, T>(valueOperations);
+  const innerMapOps = new MapOperations<ID, T>(source.operations.valueOperations);
   const outerMapOps = new MapOperations<K, IMap<ID, T>>(
     innerMapOps as unknown as Operations<IMap<ID, T>>,
   );
 
-  // Created BEFORE allChanges — dynamic nodes get indices between this and allChanges
-  const _reactiveEnsurer = source.changes.map((srcCmds) => {
-    const cmds = (srcCmds ?? []) as MapCommand<ID, T>[];
-    for (const cmd of cmds) {
-      if (cmd.type === "add") {
-        getOrCreateReactives(cmd.key, cmd.value);
-      }
-    }
-  });
-
-  const allChanges = source.changes
-    .zip(groupedUpdates, (srcCmds, _grouped) => ({
-      srcCmds: (srcCmds ?? []) as MapCommand<ID, T>[],
-    }))
-    .accumulate<{
-      currentKeys: Map<ID, K>;
-      groupSets: Map<K, Set<ID>>;
-      commands: MapCommand<K, IMap<ID, T>>[];
-    }>(
-      {
-        currentKeys,
-        groupSets,
-        commands: [],
-      },
-      (state, { srcCmds }) => {
-        const mapCmds: MapCommand<K, IMap<ID, T>>[] = [];
-        const currentKeys = state.currentKeys;
-        const groupSets = state.groupSets;
-
-        for (const cmd of srcCmds) {
-          switch (cmd.type) {
-            case "add": {
-              const id = cmd.key;
-              const { rx, keyRx } = getOrCreateReactives(id, cmd.value);
-              const key = keyRx.snapshot;
-              currentKeys.set(id, key);
-
-              const existingSet = groupSets.get(key);
-              const isNewGroup = !existingSet || existingSet.size === 0;
-              addToGroup(key, id);
-
-              if (isNewGroup) {
-                mapCmds.push({
-                  type: "add",
-                  key,
-                  value: IMap<ID, T>([[id, rx.snapshot]]),
-                });
-              } else {
-                const innerCmd: MapCommand<ID, T>[] = [
-                  { type: "add", key: id, value: rx.snapshot },
-                ];
-                mapCmds.push({ type: "update", key, command: innerCmd });
-              }
-              break;
-            }
-            case "update": {
-              const id = cmd.key;
-              const keyRx = keyReactives.get(id);
-              const rx = itemReactives.get(id);
-              if (!keyRx || !rx) break;
-
-              const oldKey = currentKeys.get(id);
-              const newKey = keyRx.snapshot;
-
-              if (oldKey === newKey) {
-                // Same group — propagate inner update
-                if (newKey !== undefined) {
-                  const innerCmd: MapCommand<ID, T>[] = [
-                    { type: "update", key: id, command: rx.changes.value },
-                  ];
-                  mapCmds.push({
-                    type: "update",
-                    key: newKey,
-                    command: innerCmd,
-                  });
-                }
-              } else {
-                // Key changed — move between groups
-                if (oldKey !== undefined) {
-                  const groupEmpty = removeFromGroup(oldKey, id);
-                  if (groupEmpty) {
-                    mapCmds.push({ type: "delete", key: oldKey });
-                  } else {
-                    const innerCmd: MapCommand<ID, T>[] = [
-                      { type: "delete", key: id },
-                    ];
-                    mapCmds.push({
-                      type: "update",
-                      key: oldKey,
-                      command: innerCmd,
-                    });
-                  }
-                }
-
-                const existingSet = groupSets.get(newKey);
-                const isNewGroup = !existingSet || existingSet.size === 0;
-                addToGroup(newKey, id);
-                currentKeys.set(id, newKey);
-
-                if (isNewGroup) {
-                  mapCmds.push({
-                    type: "add",
-                    key: newKey,
-                    value: IMap<ID, T>([[id, rx.snapshot]]),
-                  });
-                } else {
-                  const innerCmd: MapCommand<ID, T>[] = [
-                    { type: "add", key: id, value: rx.snapshot },
-                  ];
-                  mapCmds.push({
-                    type: "update",
-                    key: newKey,
-                    command: innerCmd,
-                  });
-                }
-              }
-              break;
-            }
-            case "delete": {
-              const id = cmd.key;
-              const oldKey = currentKeys.get(id);
-              if (oldKey === undefined) break;
-
-              currentKeys.delete(id);
-              const groupEmpty = removeFromGroup(oldKey, id);
-
-              if (groupEmpty) {
-                mapCmds.push({ type: "delete", key: oldKey });
-              } else {
-                const innerCmd: MapCommand<ID, T>[] = [
-                  { type: "delete", key: id },
-                ];
-                mapCmds.push({
-                  type: "update",
-                  key: oldKey,
-                  command: innerCmd,
-                });
-              }
-              break;
-            }
-            case "clear": {
-              mapCmds.push({ type: "clear" });
-              currentKeys.clear();
-              groupSets.clear();
-              break;
-            }
-          }
-        }
-
-        return {
-          currentKeys,
-          groupSets,
-          commands: mapCmds,
-        };
-      },
-    )
-    .map((state) => state.commands);
+  const materialized = source.materialized.zip(
+    keys.materialized,
+    (values, groupedKeys) => materializeGroupedMap(values, groupedKeys),
+  );
+  const allChanges = materialized
+    .delay(initialGroups)
+    .zip(materialized, (previous, current) => {
+      if (previous.equals(current)) return null;
+      return outerMapOps.replaceCommand(current);
+    });
 
   return Reactive.create<IMap<K, IMap<ID, T>>>(
     graph,

@@ -203,7 +203,7 @@ describe("flattenMap", () => {
     expect(flat.snapshot.get(Tuple("b", "z"))).toBe(3);
   });
 
-  it.skip("propagates updates when flattening a mapMap that starts empty", () => {
+  it("propagates updates when flattening a mapMap that starts empty", () => {
     const outerChanges = inputValue(graph, [] as MapCommand<string, number>[]);
     const outerMap = Reactive.create<IMap<string, number>>(
       graph,
