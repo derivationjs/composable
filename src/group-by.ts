@@ -1,22 +1,33 @@
 import { Graph, ReactiveValue } from "derivation";
+import { InternalReactiveValue } from "derivation/internal";
 import { Map as IMap } from "immutable";
 import { WeakCache } from "./weak-cache.js";
 
-class SelectStream<V> extends ReactiveValue<V[]> {
+class SelectNode<K, V> extends InternalReactiveValue<V[]> {
   private _value: V[];
+  readonly graph: Graph;
+  private readonly groupBy: InternalReactiveValue<IMap<K, V[]>>;
+  private readonly key: K;
 
-  constructor(public readonly graph: Graph) {
+  constructor(
+    graph: Graph,
+    groupBy: InternalReactiveValue<IMap<K, V[]>>,
+    key: K,
+  ) {
     super();
-    this._value = [];
+    this.graph = graph;
+    this.groupBy = this.trackInput(groupBy);
+    this.key = key;
+    this._value = this.groupBy.value.get(this.key) ?? [];
     graph.addValue(this);
   }
 
   step(): void {
-    this.invalidateDependents();
-  }
-
-  updateValue(newValue: V[]): void {
-    this._value = newValue;
+    const nextValue = this.groupBy.value.get(this.key) ?? [];
+    if (nextValue !== this._value) {
+      this._value = nextValue;
+      this.invalidateDependents();
+    }
   }
 
   get value(): V[] {
@@ -24,21 +35,25 @@ class SelectStream<V> extends ReactiveValue<V[]> {
   }
 }
 
-class GroupByStream<T, K, V> extends ReactiveValue<IMap<K, V[]>> {
+class GroupByNode<T, K, V> extends InternalReactiveValue<IMap<K, V[]>> {
   private _value: IMap<K, V[]>;
-  private readonly cache: WeakCache<K, SelectStream<V>>;
+  readonly graph: Graph;
+  private readonly source: InternalReactiveValue<T[]>;
+  private readonly selectNodes: WeakCache<K, SelectNode<K, V>>;
 
   constructor(
-    private readonly source: ReactiveValue<T[]>,
+    source: ReactiveValue<T[]>,
     private readonly getKey: (event: T) => K,
     private readonly getValue: (event: T) => V,
-    public readonly graph: Graph,
+    graph: Graph,
   ) {
     super();
+    this.graph = graph;
+    this.source = source.resolve((sourceNode) => this.trackInput(sourceNode));
     this._value = IMap();
-    this.cache = new WeakCache();
-    source.addDependent(this);
+    this.selectNodes = new WeakCache();
     graph.addValue(this);
+    this.step();
   }
 
   step(): void {
@@ -56,50 +71,50 @@ class GroupByStream<T, K, V> extends ReactiveValue<IMap<K, V[]>> {
       }
     }
 
-    // Update cached SelectStreams for current keys
-    for (const [key, values] of grouped) {
-      const selectStream = this.cache.get(key);
-      if (selectStream) {
-        selectStream.updateValue(values);
-        this.graph.markDirty(selectStream);
-      }
+    if (!this._value.equals(grouped)) {
+      this._value = grouped;
+      this.invalidateDependents();
     }
-
-    // Clear stale SelectStreams that are no longer in the grouping
-    for (const key of this._value.keys()) {
-      if (!grouped.has(key)) {
-        const selectStream = this.cache.get(key);
-        if (selectStream) {
-          selectStream.updateValue([]);
-          this.graph.markDirty(selectStream);
-        }
-      }
-    }
-
-    this._value = grouped;
-    this.invalidateDependents();
   }
 
-  select(key: K): ReactiveValue<V[]> {
-    let selectStream = this.cache.get(key);
-    if (!selectStream) {
-      selectStream = new SelectStream<V>(this.graph);
-      selectStream.ensureHeight(this.height + 1);
-      selectStream.updateValue(this._value.get(key) ?? []);
-      this.cache.set(key, selectStream);
+  selectNode(key: K): SelectNode<K, V> {
+    let node = this.selectNodes.get(key);
+    if (node === undefined || node.isDisposed) {
+      node = new SelectNode(this.graph, this, key);
+      this.selectNodes.set(key, node);
     }
-    return selectStream;
-  }
-
-  ensureHeight(minHeight: number): void {
-    super.ensureHeight(minHeight);
-    for (const [_, stream] of this.cache) {
-      stream.ensureHeight(minHeight + 1);
-    }
+    return node;
   }
 
   get value(): IMap<K, V[]> {
     return this._value;
+  }
+}
+
+class GroupByStream<T, K, V> extends ReactiveValue<IMap<K, V[]>> {
+  private readonly groupNode: GroupByNode<T, K, V>;
+  private readonly selectWrappers: WeakCache<K, ReactiveValue<V[]>>;
+
+  constructor(
+    source: ReactiveValue<T[]>,
+    getKey: (event: T) => K,
+    getValue: (event: T) => V,
+    graph: Graph,
+  ) {
+    const groupNode = new GroupByNode(source, getKey, getValue, graph);
+    super(groupNode);
+    this.groupNode = groupNode;
+    this.selectWrappers = new WeakCache();
+  }
+
+  select(key: K): ReactiveValue<V[]> {
+    let wrapper = this.selectWrappers.get(key);
+    if (wrapper === undefined || wrapper.isReleased) {
+      const node = this.groupNode.selectNode(key);
+      wrapper = ReactiveValue.fromNode(node);
+      this.selectWrappers.set(key, wrapper);
+    }
+    return wrapper;
   }
 }
 

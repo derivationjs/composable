@@ -373,4 +373,78 @@ describe("groupBy", () => {
       }
     });
   });
+
+  describe("cleanup", () => {
+    it("recreates a select stream after dispose", () => {
+      const grouped = groupBy(
+        source,
+        (e) => e.key,
+        (e) => e.value,
+      );
+
+      source.push([{ key: "a", value: 1 }]);
+      graph.step();
+
+      const selectA1 = grouped.select("a");
+      expect(selectA1.value).toEqual([1]);
+
+      selectA1.dispose();
+      expect(() => selectA1.value).toThrow();
+
+      const selectA2 = grouped.select("a");
+      expect(selectA2).not.toBe(selectA1);
+      expect(selectA2.value).toEqual([1]);
+
+      source.push([{ key: "a", value: 2 }]);
+      graph.step();
+      expect(selectA2.value).toEqual([2]);
+    });
+
+    it("stops sink callbacks after sink is disposed", () => {
+      const grouped = groupBy(
+        source,
+        (e) => e.key,
+        (e) => e.value,
+      );
+
+      const selectA = grouped.select("a");
+      const results: number[][] = [];
+      const sink = selectA.sink((values) => results.push([...values]));
+
+      source.push([{ key: "a", value: 1 }]);
+      graph.step();
+      expect(results).toEqual([[], [1]]);
+
+      sink.dispose();
+
+      source.push([{ key: "a", value: 2 }]);
+      graph.step();
+      expect(results).toEqual([[], [1]]);
+    });
+
+    it("stops updates for disposed mapped streams", () => {
+      const grouped = groupBy(
+        source,
+        (e) => e.key,
+        (e) => e.value,
+      );
+
+      const selectA = grouped.select("a");
+      const mapped = selectA.map((values) => values.reduce((a, b) => a + b, 0));
+      const sinkValues: number[] = [];
+      const sink = mapped.sink((v) => sinkValues.push(v));
+
+      source.push([{ key: "a", value: 1 }]);
+      graph.step();
+      expect(sinkValues).toEqual([0, 1]);
+
+      sink.dispose();
+      mapped.dispose();
+      selectA.dispose();
+
+      source.push([{ key: "a", value: 3 }]);
+      graph.step();
+      expect(sinkValues).toEqual([0, 1]);
+    });
+  });
 });

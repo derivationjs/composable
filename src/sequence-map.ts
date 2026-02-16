@@ -198,8 +198,8 @@ export function sequenceMap<K, V>(
   const deletes = accState.map(([, , deletes]) => deletes);
   const wasCleared = accState.map(([, , , cleared]) => cleared);
 
-  const innerChanges = treeState.map((r) => r.changes).flatten();
-  const treeMatSnapshot = treeState.map((r) => r.materialized).flatten();
+  const innerChanges = treeState.bind((r) => r.changes.clone());
+  const treeMatSnapshot = treeState.bind((r) => r.materialized.clone());
 
   // Assemble output changes: structural (clear/delete/add) + inner value changes
   const changes = innerChanges.zip4(

@@ -551,6 +551,83 @@ describe("mapMap", () => {
     expect(mapped.snapshot.get("b")).toBe(20);
   });
 
+  it("detaches removed keys from external reactive dependencies", () => {
+    const sourceChanges = inputValue(graph, [] as MapCommand<string, number>[]);
+    const sourceMap = Reactive.create<IMap<string, number>>(
+      graph,
+      new MapOperations<string, number>(numberOps),
+      sourceChanges,
+      IMap({ a: 1, b: 2 }),
+    );
+
+    const externalChanges = inputValue(
+      graph,
+      [] as MapCommand<string, number>[],
+    );
+    const externalMap = Reactive.create<IMap<string, number>>(
+      graph,
+      new MapOperations<string, number>(numberOps),
+      externalChanges,
+      IMap({ a: 10, b: 20 }),
+    );
+
+    const mapped = mapMap<string, number, number>(
+      graph,
+      sourceMap,
+      (_rx, key) => getKeyMap(graph, externalMap, key, 0),
+    );
+    graph.step();
+    expect(mapped.snapshot.toObject()).toEqual({ a: 10, b: 20 });
+
+    sourceChanges.push([{ type: "delete", key: "a" }]);
+    graph.step();
+    expect(mapped.snapshot.toObject()).toEqual({ b: 20 });
+
+    externalChanges.push([{ type: "update", key: "a", command: 999 }]);
+    graph.step();
+    expect(mapped.snapshot.toObject()).toEqual({ b: 20 });
+  });
+
+  it("detaches all keys from external dependencies after clear", () => {
+    const sourceChanges = inputValue(graph, [] as MapCommand<string, number>[]);
+    const sourceMap = Reactive.create<IMap<string, number>>(
+      graph,
+      new MapOperations<string, number>(numberOps),
+      sourceChanges,
+      IMap({ a: 1, b: 2 }),
+    );
+
+    const externalChanges = inputValue(
+      graph,
+      [] as MapCommand<string, number>[],
+    );
+    const externalMap = Reactive.create<IMap<string, number>>(
+      graph,
+      new MapOperations<string, number>(numberOps),
+      externalChanges,
+      IMap({ a: 10, b: 20 }),
+    );
+
+    const mapped = mapMap<string, number, number>(
+      graph,
+      sourceMap,
+      (_rx, key) => getKeyMap(graph, externalMap, key, 0),
+    );
+    graph.step();
+    expect(mapped.snapshot.toObject()).toEqual({ a: 10, b: 20 });
+
+    sourceChanges.push([{ type: "clear" }]);
+    graph.step();
+    expect(mapped.snapshot.size).toBe(0);
+
+    externalChanges.push([
+      { type: "update", key: "a", command: 101 },
+      { type: "update", key: "b", command: 202 },
+    ]);
+    graph.step();
+    expect(mapped.snapshot.size).toBe(0);
+  });
+
   it("should produce valid operations for flattenMap when starting empty", () => {
     // mapMap starting from an empty map, where f returns a Reactive<Map>,
     // then piped into flattenMap — reproduces the bug where mapMap leaves
