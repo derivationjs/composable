@@ -1,6 +1,7 @@
 import { Map as IMap, hash } from "immutable";
 import { Graph, ReactiveValue } from "derivation";
 import { Reactive } from "./reactive.js";
+import { Cell } from "./cell.js";
 import { Operations } from "./operations.js";
 import { MapCommand, MapOperations } from "./map-operations.js";
 import { operationsProxy } from "./operations-proxy.js";
@@ -23,7 +24,7 @@ function takeRightWhile<X>(
 }
 
 /**
- * Sequences a Reactive<Map<K, Reactive<V>>> into a Reactive<Map<K, V>>.
+ * Sequences a Reactive<Map<K, Cell<Reactive<V>>>> into a Reactive<Map<K, V>>.
  *
  * As keys are added/removed from the outer map, their inner Reactive<V>
  * values are subscribed/unsubscribed. Value changes from inner reactives
@@ -31,7 +32,7 @@ function takeRightWhile<X>(
  */
 export function sequenceMap<K, V>(
   graph: Graph,
-  map: Reactive<IMap<K, Reactive<V>>>,
+  map: Reactive<IMap<K, Cell<Reactive<V>>>>,
 ): Reactive<IMap<K, V>> {
   type TreeValue = {
     reactiveMap: Reactive<IMap<K, V>>;
@@ -54,13 +55,13 @@ export function sequenceMap<K, V>(
     );
   const cleared = decomposed.map((x) => x[0] !== null);
   const lastChanges = decomposed.map((x) => x[1]) as ReactiveValue<
-    Exclude<MapCommand<K, Reactive<V>>, { type: "clear" }>[]
+    Exclude<MapCommand<K, Cell<Reactive<V>>>, { type: "clear" }>[]
   >;
 
   // Extract structural commands (add/delete/update) per key, last one wins
-  type Add = Extract<MapCommand<K, Reactive<V>>, { type: "add" }>;
-  type Delete = Extract<MapCommand<K, Reactive<V>>, { type: "delete" }>;
-  type Update = Extract<MapCommand<K, Reactive<V>>, { type: "update" }>;
+  type Add = Extract<MapCommand<K, Cell<Reactive<V>>>, { type: "add" }>;
+  type Delete = Extract<MapCommand<K, Cell<Reactive<V>>>, { type: "delete" }>;
+  type Update = Extract<MapCommand<K, Cell<Reactive<V>>>, { type: "update" }>;
 
   const keyState = lastChanges.map((cmds) => {
     let grouped = IMap<K, (Add | Delete | Update)[]>();
@@ -96,7 +97,8 @@ export function sequenceMap<K, V>(
     return result;
   });
 
-  const wrapKey = (key: K, rx: Reactive<V>): TreeValue => {
+  const wrapKey = (key: K, wrappedRx: Cell<Reactive<V>>): TreeValue => {
+    const rx = wrappedRx.value;
     yValueOps.setTarget(rx.operations);
     return {
       reactiveMap: singletonMap(graph, key, rx),
@@ -123,7 +125,7 @@ export function sequenceMap<K, V>(
     }),
   );
 
-  const insertByHash = (key: K, rx: Reactive<V>): void => {
+  const insertByHash = (key: K, rx: Cell<Reactive<V>>): void => {
     const wrapped = wrapKey(key, rx);
     tree.insert(key, wrapped, (prefix) => prefix.maxKey >= wrapped.keyHash);
   };
@@ -163,7 +165,7 @@ export function sequenceMap<K, V>(
             continue;
           }
 
-          let nextReactive: Reactive<V> | null = null;
+          let nextReactive: Cell<Reactive<V>> | null = null;
           if (state.structural !== null && state.structural.type === "add") {
             nextReactive = state.structural.value;
           } else if (
@@ -171,7 +173,7 @@ export function sequenceMap<K, V>(
             state.update.command !== null &&
             presentKeys.has(key)
           ) {
-            nextReactive = state.update.command as unknown as Reactive<V>;
+            nextReactive = new Cell(state.update.command as Reactive<V>);
           }
 
           if (nextReactive !== null) {

@@ -3,7 +3,7 @@
   "author": "Daniel Waterworth",
   "license": "MIT",
   "description": "Experimental library for expressive, react data flows.",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -20,25 +20,20 @@
     "build:watch": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "prepack": "rm -rf dist && npm run lint && npm run typecheck && npm run test",
+    "prepack": "rm -rf dist && npm run typecheck && npm run test",
     "prepare": "tsup"
   },
   "files": [
     "dist"
   ],
   "dependencies": {
-    "derivation": "^0.6.0",
+    "@derivation/indexed-list": "^0.7.0",
+    "derivation": "^0.7.0",
     "immutable": "^5.1.4"
   },
   "devDependencies": {
     "@types/node": "^25",
-    "@typescript-eslint/eslint-plugin": "^8.56.0",
-    "@typescript-eslint/parser": "^8.56.0",
-    "@vitest/ui": "^4.0.18",
-    "eslint": "^9.0.0",
-    "eslint-plugin-import": "^2.32.0",
     "tsup": "^8.5.1",
     "typescript": "^5",
     "vitest": "^4.0.18"

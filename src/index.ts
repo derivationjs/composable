@@ -1,18 +1,20 @@
 // Core data structures
 export { Log } from "./log.js";
 export { Tuple } from "./tuple.js";
+export { Cell } from "./cell.js";
 
 // Operations and base interfaces
 export {
   type Changes,
   type OperationsBase,
   type Operations,
-  type Primitive,
+  type Operable,
   asBase,
 } from "./operations.js";
-export { PrimitiveOperations } from "./primitive-operations.js";
+export { CellOperations } from "./cell-operations.js";
 export { MapOperations, type MapCommand } from "./map-operations.js";
 export { ListOperations, type ListCommand } from "./list-operations.js";
+export { IndexedListOperations } from "./indexed-list-operations.js";
 export { LogOperations, type LogCommand } from "./log-operations.js";
 export { TupleOperations, type TupleCommand } from "./tuple-operations.js";
 
@@ -30,13 +32,16 @@ export {
 
 // List reactive operations
 export { sequenceList, mapList } from "./list-reactive.js";
+export { indexList } from "./index-list.js";
+export { deindexList } from "./deindex-list.js";
 
 // Map reactive operations
 export { mapMap } from "./map-reactive.js";
-export { singletonMap } from "./singleton-map.js";
+export { singletonMap, reactiveSingletonMap } from "./singleton-map.js";
 
-// Primitive reactive operations
-export { mapPrimitive } from "./map-primitive.js";
+export { constantCell } from "./constant-cell.js";
+export { mapCell } from "./map-cell.js";
+export { zipCell } from "./zip-cell.js";
 
 // Filter and group operations
 export { filterList } from "./filter-list.js";
@@ -48,6 +53,7 @@ export { joinMap } from "./join-map.js";
 
 // Conversions
 export { getKeyMap } from "./get-key-map.js";
+export { getReactiveKeyMap } from "./get-reactive-key-map.js";
 export { getSingleMapValue } from "./get-single-map-value.js";
 export { flattenMap } from "./flatten-map.js";
 export { projectTuple } from "./project-tuple.js";

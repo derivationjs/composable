@@ -2,31 +2,40 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { Graph, inputValue, Input } from "derivation";
 import { Map as IMap } from "immutable";
 import { Reactive } from "../reactive.js";
+import { Cell } from "../cell.js";
+import { CellOperations } from "../cell-operations.js";
 import { MapOperations, MapCommand } from "../map-operations.js";
-import { PrimitiveOperations } from "../primitive-operations.js";
 import { unsafeMergeMap, emptyReactiveMap } from "../unsafe-merge-map.js";
 
-const numberOps = new PrimitiveOperations<number>();
-const mapOps = new MapOperations<string, number>(numberOps);
+const numberOps = new CellOperations<number>();
+const mapOps = new MapOperations<string, Cell<number>>(numberOps);
+
+function cell(value: number): Cell<number> {
+  return new Cell(value);
+}
+
+function unwrapMap(map: IMap<string, Cell<number>>): Record<string, number> {
+  return map.map((v) => v.value).toObject() as Record<string, number>;
+}
 
 describe("unsafeMergeMap", () => {
   let graph: Graph;
-  let changesA: Input<MapCommand<string, number>[] | null>;
-  let changesB: Input<MapCommand<string, number>[] | null>;
-  let mapA: Reactive<IMap<string, number>>;
-  let mapB: Reactive<IMap<string, number>>;
+  let changesA: Input<MapCommand<string, Cell<number>>[] | null>;
+  let changesB: Input<MapCommand<string, Cell<number>>[] | null>;
+  let mapA: Reactive<IMap<string, Cell<number>>>;
+  let mapB: Reactive<IMap<string, Cell<number>>>;
 
   beforeEach(() => {
     graph = new Graph();
-    changesA = inputValue(graph, null as MapCommand<string, number>[] | null);
-    changesB = inputValue(graph, null as MapCommand<string, number>[] | null);
+    changesA = inputValue(graph, null as MapCommand<string, Cell<number>>[] | null);
+    changesB = inputValue(graph, null as MapCommand<string, Cell<number>>[] | null);
   });
 
   function createMap(
-    changes: Input<MapCommand<string, number>[] | null>,
-    initial: IMap<string, number>,
+    changes: Input<MapCommand<string, Cell<number>>[] | null>,
+    initial: IMap<string, Cell<number>>,
   ) {
-    return Reactive.create<IMap<string, number>>(graph, mapOps, changes, initial);
+    return Reactive.create<IMap<string, Cell<number>>>(graph, mapOps, changes, initial);
   }
 
   it("should merge two empty maps", () => {
@@ -39,41 +48,41 @@ describe("unsafeMergeMap", () => {
   });
 
   it("should merge initial values from both maps", () => {
-    mapA = createMap(changesA, IMap({ a: 1, b: 2 }));
-    mapB = createMap(changesB, IMap({ c: 3, d: 4 }));
+    mapA = createMap(changesA, IMap({ a: cell(1), b: cell(2) }));
+    mapB = createMap(changesB, IMap({ c: cell(3), d: cell(4) }));
     const merged = unsafeMergeMap(graph, mapA, mapB, mapOps);
     graph.step();
 
-    expect(merged.snapshot.toObject()).toEqual({ a: 1, b: 2, c: 3, d: 4 });
+    expect(unwrapMap(merged.snapshot)).toEqual({ a: 1, b: 2, c: 3, d: 4 });
   });
 
   it("should propagate adds from left side", () => {
     mapA = createMap(changesA, IMap());
-    mapB = createMap(changesB, IMap({ x: 10 }));
+    mapB = createMap(changesB, IMap({ x: cell(10) }));
     const merged = unsafeMergeMap(graph, mapA, mapB, mapOps);
     graph.step();
 
-    changesA.push([{ type: "add", key: "a", value: 1 }]);
+    changesA.push([{ type: "add", key: "a", value: cell(1) }]);
     graph.step();
 
-    expect(merged.snapshot.toObject()).toEqual({ a: 1, x: 10 });
+    expect(unwrapMap(merged.snapshot)).toEqual({ a: 1, x: 10 });
   });
 
   it("should propagate adds from right side", () => {
-    mapA = createMap(changesA, IMap({ a: 1 }));
+    mapA = createMap(changesA, IMap({ a: cell(1) }));
     mapB = createMap(changesB, IMap());
     const merged = unsafeMergeMap(graph, mapA, mapB, mapOps);
     graph.step();
 
-    changesB.push([{ type: "add", key: "x", value: 10 }]);
+    changesB.push([{ type: "add", key: "x", value: cell(10) }]);
     graph.step();
 
-    expect(merged.snapshot.toObject()).toEqual({ a: 1, x: 10 });
+    expect(unwrapMap(merged.snapshot)).toEqual({ a: 1, x: 10 });
   });
 
   it("should propagate updates from both sides", () => {
-    mapA = createMap(changesA, IMap({ a: 1 }));
-    mapB = createMap(changesB, IMap({ x: 10 }));
+    mapA = createMap(changesA, IMap({ a: cell(1) }));
+    mapB = createMap(changesB, IMap({ x: cell(10) }));
     const merged = unsafeMergeMap(graph, mapA, mapB, mapOps);
     graph.step();
 
@@ -81,40 +90,40 @@ describe("unsafeMergeMap", () => {
     changesB.push([{ type: "update", key: "x", command: 20 }]);
     graph.step();
 
-    expect(merged.snapshot.toObject()).toEqual({ a: 2, x: 20 });
+    expect(unwrapMap(merged.snapshot)).toEqual({ a: 2, x: 20 });
   });
 
   it("should propagate deletes", () => {
-    mapA = createMap(changesA, IMap({ a: 1, b: 2 }));
-    mapB = createMap(changesB, IMap({ x: 10 }));
+    mapA = createMap(changesA, IMap({ a: cell(1), b: cell(2) }));
+    mapB = createMap(changesB, IMap({ x: cell(10) }));
     const merged = unsafeMergeMap(graph, mapA, mapB, mapOps);
     graph.step();
 
     changesA.push([{ type: "delete", key: "a" }]);
     graph.step();
 
-    expect(merged.snapshot.toObject()).toEqual({ b: 2, x: 10 });
+    expect(unwrapMap(merged.snapshot)).toEqual({ b: 2, x: 10 });
   });
 
   it("should concatenate changes from both sides", () => {
-    mapA = createMap(changesA, IMap({ a: 1 }));
-    mapB = createMap(changesB, IMap({ x: 10 }));
+    mapA = createMap(changesA, IMap({ a: cell(1) }));
+    mapB = createMap(changesB, IMap({ x: cell(10) }));
     const merged = unsafeMergeMap(graph, mapA, mapB, mapOps);
     graph.step();
 
-    changesA.push([{ type: "add", key: "b", value: 2 }]);
-    changesB.push([{ type: "add", key: "y", value: 20 }]);
+    changesA.push([{ type: "add", key: "b", value: cell(2) }]);
+    changesB.push([{ type: "add", key: "y", value: cell(20) }]);
     graph.step();
 
     expect(merged.changes.value).toEqual([
-      { type: "add", key: "b", value: 2 },
-      { type: "add", key: "y", value: 20 },
+      { type: "add", key: "b", value: cell(2) },
+      { type: "add", key: "y", value: cell(20) },
     ]);
   });
 
   it("should return null changes when neither side changes", () => {
-    mapA = createMap(changesA, IMap({ a: 1 }));
-    mapB = createMap(changesB, IMap({ x: 10 }));
+    mapA = createMap(changesA, IMap({ a: cell(1) }));
+    mapB = createMap(changesB, IMap({ x: cell(10) }));
     const merged = unsafeMergeMap(graph, mapA, mapB, mapOps);
     graph.step();
 
@@ -126,23 +135,23 @@ describe("unsafeMergeMap", () => {
   });
 
   it("should track previousMaterialized correctly", () => {
-    mapA = createMap(changesA, IMap({ a: 1 }));
-    mapB = createMap(changesB, IMap({ x: 10 }));
+    mapA = createMap(changesA, IMap({ a: cell(1) }));
+    mapB = createMap(changesB, IMap({ x: cell(10) }));
     const merged = unsafeMergeMap(graph, mapA, mapB, mapOps);
     graph.step();
 
     changesA.push([{ type: "update", key: "a", command: 2 }]);
     graph.step();
 
-    expect(merged.previousSnapshot.toObject()).toEqual({ a: 1, x: 10 });
-    expect(merged.snapshot.toObject()).toEqual({ a: 2, x: 10 });
+    expect(unwrapMap(merged.previousSnapshot)).toEqual({ a: 1, x: 10 });
+    expect(unwrapMap(merged.snapshot)).toEqual({ a: 2, x: 10 });
   });
 });
 
 describe("emptyReactiveMap", () => {
   it("should create an empty reactive map with null changes", () => {
     const graph = new Graph();
-    const empty = emptyReactiveMap<string, number>(graph, mapOps);
+    const empty = emptyReactiveMap<string, Cell<number>>(graph, mapOps);
     graph.step();
 
     expect(empty.snapshot.size).toBe(0);

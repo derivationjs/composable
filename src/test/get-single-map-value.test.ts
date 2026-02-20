@@ -2,126 +2,127 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { Graph, inputValue, Input } from "derivation";
 import { Map as IMap } from "immutable";
 import { Reactive } from "../reactive.js";
+import { Cell } from "../cell.js";
+import { CellOperations } from "../cell-operations.js";
 import { MapOperations, MapCommand } from "../map-operations.js";
-import { PrimitiveOperations } from "../primitive-operations.js";
 import { getSingleMapValue } from "../get-single-map-value.js";
 import { List } from "immutable";
 import { ListOperations, ListCommand } from "../list-operations.js";
 
-const numberOps = new PrimitiveOperations<number>();
+const numberOps = new CellOperations<number>();
 
 describe("getSingleMapValue", () => {
   let graph: Graph;
-  let changes: Input<MapCommand<string, number>[]>;
-  let map: Reactive<IMap<string, number>>;
+  let changes: Input<MapCommand<string, Cell<number>>[]>;
+  let map: Reactive<IMap<string, Cell<number>>>;
 
   beforeEach(() => {
     graph = new Graph();
-    changes = inputValue(graph, [] as MapCommand<string, number>[]);
-    map = Reactive.create<IMap<string, number>>(
+    changes = inputValue(graph, [] as MapCommand<string, Cell<number>>[]);
+    map = Reactive.create<IMap<string, Cell<number>>>(
       graph,
-      new MapOperations<string, number>(numberOps),
+      new MapOperations<string, Cell<number>>(numberOps),
       changes,
-      IMap({ a: 1 }),
+      IMap({ a: new Cell(1) }),
     );
   });
 
   it("should extract the only value when map size is 1", () => {
-    const value = getSingleMapValue(graph, map, 0);
+    const value = getSingleMapValue(graph, map, new Cell(0));
     graph.step();
 
-    expect(value.snapshot).toBe(1);
+    expect(value.snapshot.value).toBe(1);
   });
 
   it("should use default value when map is empty", () => {
-    const emptyChanges = inputValue(graph, [] as MapCommand<string, number>[]);
-    const emptyMap = Reactive.create<IMap<string, number>>(
+    const emptyChanges = inputValue(graph, [] as MapCommand<string, Cell<number>>[]);
+    const emptyMap = Reactive.create<IMap<string, Cell<number>>>(
       graph,
-      new MapOperations<string, number>(numberOps),
+      new MapOperations<string, Cell<number>>(numberOps),
       emptyChanges,
-      IMap<string, number>(),
+      IMap<string, Cell<number>>(),
     );
 
-    const value = getSingleMapValue(graph, emptyMap, 7);
+    const value = getSingleMapValue(graph, emptyMap, new Cell(7));
     graph.step();
 
-    expect(value.snapshot).toBe(7);
+    expect(value.snapshot.value).toBe(7);
   });
 
   it("should use default value when map has more than one entry", () => {
-    const multiChanges = inputValue(graph, [] as MapCommand<string, number>[]);
-    const multiMap = Reactive.create<IMap<string, number>>(
+    const multiChanges = inputValue(graph, [] as MapCommand<string, Cell<number>>[]);
+    const multiMap = Reactive.create<IMap<string, Cell<number>>>(
       graph,
-      new MapOperations<string, number>(numberOps),
+      new MapOperations<string, Cell<number>>(numberOps),
       multiChanges,
-      IMap({ a: 1, b: 2 }),
+      IMap({ a: new Cell(1), b: new Cell(2) }),
     );
 
-    const value = getSingleMapValue(graph, multiMap, 9);
+    const value = getSingleMapValue(graph, multiMap, new Cell(9));
     graph.step();
 
-    expect(value.snapshot).toBe(9);
+    expect(value.snapshot.value).toBe(9);
   });
 
   it("should update when size transitions to 1", () => {
-    const value = getSingleMapValue(graph, map, 0);
+    const value = getSingleMapValue(graph, map, new Cell(0));
     graph.step();
 
-    expect(value.snapshot).toBe(1);
+    expect(value.snapshot.value).toBe(1);
 
-    changes.push([{ type: "add", key: "b", value: 2 }]);
+    changes.push([{ type: "add", key: "b", value: new Cell(2) }]);
     graph.step();
-    expect(value.snapshot).toBe(0);
+    expect(value.snapshot.value).toBe(0);
 
     changes.push([{ type: "delete", key: "b" }]);
     graph.step();
-    expect(value.snapshot).toBe(1);
+    expect(value.snapshot.value).toBe(1);
   });
 
   it("should update when the single value changes", () => {
-    const value = getSingleMapValue(graph, map, 0);
+    const value = getSingleMapValue(graph, map, new Cell(0));
     graph.step();
 
     changes.push([{ type: "update", key: "a", command: 5 }]);
     graph.step();
 
-    expect(value.snapshot).toBe(5);
+    expect(value.snapshot.value).toBe(5);
   });
 
   it("should fall back to default on clear and recover on add", () => {
-    const value = getSingleMapValue(graph, map, 3);
+    const value = getSingleMapValue(graph, map, new Cell(3));
     graph.step();
 
     changes.push([{ type: "clear" }]);
     graph.step();
-    expect(value.snapshot).toBe(3);
+    expect(value.snapshot.value).toBe(3);
 
-    changes.push([{ type: "add", key: "z", value: 8 }]);
+    changes.push([{ type: "add", key: "z", value: new Cell(8) }]);
     graph.step();
-    expect(value.snapshot).toBe(8);
+    expect(value.snapshot.value).toBe(8);
   });
 
   it("should pass through list updates without replacing the list", () => {
-    const listOps = new ListOperations<number>(numberOps);
-    const outerOps = new MapOperations<string, List<number>>(listOps);
+    const listOps = new ListOperations<Cell<number>>(numberOps);
+    const outerOps = new MapOperations<string, List<Cell<number>>>(listOps);
     const listMapChanges = inputValue(
       graph,
-      [] as MapCommand<string, List<number>>[],
+      [] as MapCommand<string, List<Cell<number>>>[],
     );
-    const listMap = Reactive.create<IMap<string, List<number>>>(
+    const listMap = Reactive.create<IMap<string, List<Cell<number>>>>(
       graph,
       outerOps,
       listMapChanges,
-      IMap({ only: List([1, 2]) }),
+      IMap({ only: List([new Cell(1), new Cell(2)]) }),
     );
 
-    const single = getSingleMapValue(graph, listMap, List<number>());
+    const single = getSingleMapValue(graph, listMap, List<Cell<number>>());
     graph.step();
 
-    const listInsert: ListCommand<number> = {
+    const listInsert: ListCommand<Cell<number>> = {
       type: "insert",
       index: 2,
-      value: 3,
+      value: new Cell(3),
     };
     listMapChanges.push([
       { type: "update", key: "only", command: [listInsert] },

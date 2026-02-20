@@ -2,40 +2,51 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { Graph, inputValue, Input } from "derivation";
 import { Map as IMap } from "immutable";
 import { Reactive } from "../reactive.js";
+import { Cell } from "../cell.js";
+import { CellOperations } from "../cell-operations.js";
 import { MapOperations, MapCommand } from "../map-operations.js";
 import { joinMap } from "../join-map.js";
-import { PrimitiveOperations } from "../primitive-operations.js";
 import { Tuple } from "../tuple.js";
 
-const numberOps = new PrimitiveOperations<number>();
-const stringOps = new PrimitiveOperations<string>();
+const numberOps = new CellOperations<number>();
+const stringOps = new CellOperations<string>();
+const cn = (n: number) => new Cell(n);
+const cs = (s: string) => new Cell(s);
+const nm = (obj: Record<string, number>) =>
+  IMap<string, Cell<number>>(
+    Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, cn(v)])),
+  );
+const sm = (obj: Record<string, string>) =>
+  IMap<string, Cell<string>>(
+    Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, cs(v)])),
+  );
+const tv = (n: number, s: string) => Tuple(cn(n), cs(s));
 
-// Inner map operations: IMap<string, number> needs PrimitiveOperations<number> as value ops
-const innerNumberMapOps = new MapOperations<string, number>(numberOps);
-const innerStringMapOps = new MapOperations<string, string>(stringOps);
+const innerNumberMapOps = new MapOperations<string, Cell<number>>(numberOps);
+const innerStringMapOps = new MapOperations<string, Cell<string>>(stringOps);
 
 describe("joinMap", () => {
   let graph: Graph;
-  let leftChanges: Input<MapCommand<string, IMap<string, number>>[]>;
-  let rightChanges: Input<MapCommand<string, IMap<string, string>>[]>;
-  let left: Reactive<IMap<string, IMap<string, number>>>;
-  let right: Reactive<IMap<string, IMap<string, string>>>;
+  let leftChanges: Input<MapCommand<string, IMap<string, Cell<number>>>[]>;
+  let rightChanges: Input<MapCommand<string, IMap<string, Cell<string>>>[]>;
+  let left: Reactive<IMap<string, IMap<string, Cell<number>>>>;
+  let right: Reactive<IMap<string, IMap<string, Cell<string>>>>;
 
   beforeEach(() => {
     graph = new Graph();
-    leftChanges = inputValue(graph, [] as MapCommand<string, IMap<string, number>>[]);
-    rightChanges = inputValue(graph, [] as MapCommand<string, IMap<string, string>>[]);
-    left = Reactive.create<IMap<string, IMap<string, number>>>(
+    leftChanges = inputValue(graph, [] as MapCommand<string, IMap<string, Cell<number>>>[]);
+    rightChanges = inputValue(graph, [] as MapCommand<string, IMap<string, Cell<string>>>[]);
+    left = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
-      IMap<string, IMap<string, number>>(),
+      IMap<string, IMap<string, Cell<number>>>(),
     );
-    right = Reactive.create<IMap<string, IMap<string, string>>>(
+    right = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
-      IMap<string, IMap<string, string>>(),
+      IMap<string, IMap<string, Cell<string>>>(),
     );
   });
 
@@ -47,24 +58,24 @@ describe("joinMap", () => {
   });
 
   it("should produce initial snapshot with matching keys", () => {
-    const lInitial = IMap<string, IMap<string, number>>({
-      x: IMap({ a: 1, b: 2 }),
-      y: IMap({ c: 3 }),
+    const lInitial = IMap<string, IMap<string, Cell<number>>>({
+      x: nm({ a: 1, b: 2 }),
+      y: nm({ c: 3 }),
     });
-    const rInitial = IMap<string, IMap<string, string>>({
-      x: IMap({ p: "hello" }),
-      z: IMap({ q: "world" }),
+    const rInitial = IMap<string, IMap<string, Cell<string>>>({
+      x: sm({ p: "hello" }),
+      z: sm({ q: "world" }),
     });
 
-    const l = Reactive.create<IMap<string, IMap<string, number>>>(
+    const l = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
       lInitial,
     );
-    const r = Reactive.create<IMap<string, IMap<string, string>>>(
+    const r = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
       rInitial,
     );
@@ -79,18 +90,18 @@ describe("joinMap", () => {
     const xProduct = joined.snapshot.get("x")!;
     // Cartesian product: {a,b} × {p} = 2 entries
     expect(xProduct.size).toBe(2);
-    expect(xProduct.get(Tuple("a", "p"))).toEqual(Tuple(1, "hello"));
-    expect(xProduct.get(Tuple("b", "p"))).toEqual(Tuple(2, "hello"));
+    expect(xProduct.get(Tuple("a", "p"))).toEqual(tv(1, "hello"));
+    expect(xProduct.get(Tuple("b", "p"))).toEqual(tv(2, "hello"));
   });
 
   it("should produce output when key is added to left and right already has it", () => {
     // Right starts with key "x"
-    const rInitial = IMap<string, IMap<string, string>>({
-      x: IMap({ p: "hello" }),
+    const rInitial = IMap<string, IMap<string, Cell<string>>>({
+      x: sm({ p: "hello" }),
     });
-    const r = Reactive.create<IMap<string, IMap<string, string>>>(
+    const r = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
       rInitial,
     );
@@ -102,23 +113,23 @@ describe("joinMap", () => {
     expect(joined.snapshot.size).toBe(0);
 
     // Add key "x" to left
-    leftChanges.push([{ type: "add", key: "x", value: IMap({ a: 1 }) }]);
+    leftChanges.push([{ type: "add", key: "x", value: nm({ a: 1 }) }]);
     graph.step();
 
     expect(joined.snapshot.size).toBe(1);
     const xProduct = joined.snapshot.get("x")!;
     expect(xProduct.size).toBe(1);
-    expect(xProduct.get(Tuple("a", "p"))).toEqual(Tuple(1, "hello"));
+    expect(xProduct.get(Tuple("a", "p"))).toEqual(tv(1, "hello"));
   });
 
   it("should produce output when key is added to right and left already has it", () => {
     // Left starts with key "x"
-    const lInitial = IMap<string, IMap<string, number>>({
-      x: IMap({ a: 1, b: 2 }),
+    const lInitial = IMap<string, IMap<string, Cell<number>>>({
+      x: nm({ a: 1, b: 2 }),
     });
-    const l = Reactive.create<IMap<string, IMap<string, number>>>(
+    const l = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
       lInitial,
     );
@@ -129,32 +140,32 @@ describe("joinMap", () => {
     expect(joined.snapshot.size).toBe(0);
 
     // Add key "x" to right
-    rightChanges.push([{ type: "add", key: "x", value: IMap({ p: "hello" }) }]);
+    rightChanges.push([{ type: "add", key: "x", value: sm({ p: "hello" }) }]);
     graph.step();
 
     expect(joined.snapshot.size).toBe(1);
     const xProduct = joined.snapshot.get("x")!;
     expect(xProduct.size).toBe(2);
-    expect(xProduct.get(Tuple("a", "p"))).toEqual(Tuple(1, "hello"));
-    expect(xProduct.get(Tuple("b", "p"))).toEqual(Tuple(2, "hello"));
+    expect(xProduct.get(Tuple("a", "p"))).toEqual(tv(1, "hello"));
+    expect(xProduct.get(Tuple("b", "p"))).toEqual(tv(2, "hello"));
   });
 
   it("should update output when inner map on one side changes", () => {
-    const lInitial = IMap<string, IMap<string, number>>({
-      x: IMap({ a: 1 }),
+    const lInitial = IMap<string, IMap<string, Cell<number>>>({
+      x: nm({ a: 1 }),
     });
-    const rInitial = IMap<string, IMap<string, string>>({
-      x: IMap({ p: "hello" }),
+    const rInitial = IMap<string, IMap<string, Cell<string>>>({
+      x: sm({ p: "hello" }),
     });
-    const l = Reactive.create<IMap<string, IMap<string, number>>>(
+    const l = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
       lInitial,
     );
-    const r = Reactive.create<IMap<string, IMap<string, string>>>(
+    const r = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
       rInitial,
     );
@@ -168,32 +179,32 @@ describe("joinMap", () => {
     leftChanges.push([{
       type: "update",
       key: "x",
-      command: [{ type: "add", key: "b", value: 2 }],
+      command: [{ type: "add", key: "b", value: cn(2) }],
     }]);
     graph.step();
 
     const xProduct = joined.snapshot.get("x")!;
     expect(xProduct.size).toBe(2);
-    expect(xProduct.get(Tuple("a", "p"))).toEqual(Tuple(1, "hello"));
-    expect(xProduct.get(Tuple("b", "p"))).toEqual(Tuple(2, "hello"));
+    expect(xProduct.get(Tuple("a", "p"))).toEqual(tv(1, "hello"));
+    expect(xProduct.get(Tuple("b", "p"))).toEqual(tv(2, "hello"));
   });
 
   it("should remove output when key is deleted from one side", () => {
-    const lInitial = IMap<string, IMap<string, number>>({
-      x: IMap({ a: 1 }),
+    const lInitial = IMap<string, IMap<string, Cell<number>>>({
+      x: nm({ a: 1 }),
     });
-    const rInitial = IMap<string, IMap<string, string>>({
-      x: IMap({ p: "hello" }),
+    const rInitial = IMap<string, IMap<string, Cell<string>>>({
+      x: sm({ p: "hello" }),
     });
-    const l = Reactive.create<IMap<string, IMap<string, number>>>(
+    const l = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
       lInitial,
     );
-    const r = Reactive.create<IMap<string, IMap<string, string>>>(
+    const r = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
       rInitial,
     );
@@ -211,21 +222,21 @@ describe("joinMap", () => {
   });
 
   it("should not produce output for non-matching keys", () => {
-    const lInitial = IMap<string, IMap<string, number>>({
-      a: IMap({ id1: 1 }),
+    const lInitial = IMap<string, IMap<string, Cell<number>>>({
+      a: nm({ id1: 1 }),
     });
-    const rInitial = IMap<string, IMap<string, string>>({
-      b: IMap({ id2: "hello" }),
+    const rInitial = IMap<string, IMap<string, Cell<string>>>({
+      b: sm({ id2: "hello" }),
     });
-    const l = Reactive.create<IMap<string, IMap<string, number>>>(
+    const l = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
       lInitial,
     );
-    const r = Reactive.create<IMap<string, IMap<string, string>>>(
+    const r = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
       rInitial,
     );
@@ -236,28 +247,28 @@ describe("joinMap", () => {
     expect(joined.snapshot.size).toBe(0);
 
     // Add a key to left that still doesn't match right
-    leftChanges.push([{ type: "add", key: "c", value: IMap({ id3: 3 }) }]);
+    leftChanges.push([{ type: "add", key: "c", value: nm({ id3: 3 }) }]);
     graph.step();
 
     expect(joined.snapshot.size).toBe(0);
   });
 
   it("should handle updates on both sides in the same step", () => {
-    const lInitial = IMap<string, IMap<string, number>>({
-      x: IMap({ a: 1 }),
+    const lInitial = IMap<string, IMap<string, Cell<number>>>({
+      x: nm({ a: 1 }),
     });
-    const rInitial = IMap<string, IMap<string, string>>({
-      x: IMap({ p: "hello" }),
+    const rInitial = IMap<string, IMap<string, Cell<string>>>({
+      x: sm({ p: "hello" }),
     });
-    const l = Reactive.create<IMap<string, IMap<string, number>>>(
+    const l = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
       lInitial,
     );
-    const r = Reactive.create<IMap<string, IMap<string, string>>>(
+    const r = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
       rInitial,
     );
@@ -269,40 +280,40 @@ describe("joinMap", () => {
     leftChanges.push([{
       type: "update",
       key: "x",
-      command: [{ type: "add", key: "b", value: 2 }],
+      command: [{ type: "add", key: "b", value: cn(2) }],
     }]);
     rightChanges.push([{
       type: "update",
       key: "x",
-      command: [{ type: "add", key: "q", value: "world" }],
+      command: [{ type: "add", key: "q", value: cs("world") }],
     }]);
     graph.step();
 
     const xProduct = joined.snapshot.get("x")!;
     // {a,b} × {p,q} = 4 entries
     expect(xProduct.size).toBe(4);
-    expect(xProduct.get(Tuple("a", "p"))).toEqual(Tuple(1, "hello"));
-    expect(xProduct.get(Tuple("a", "q"))).toEqual(Tuple(1, "world"));
-    expect(xProduct.get(Tuple("b", "p"))).toEqual(Tuple(2, "hello"));
-    expect(xProduct.get(Tuple("b", "q"))).toEqual(Tuple(2, "world"));
+    expect(xProduct.get(Tuple("a", "p"))).toEqual(tv(1, "hello"));
+    expect(xProduct.get(Tuple("a", "q"))).toEqual(tv(1, "world"));
+    expect(xProduct.get(Tuple("b", "p"))).toEqual(tv(2, "hello"));
+    expect(xProduct.get(Tuple("b", "q"))).toEqual(tv(2, "world"));
   });
 
   it("should handle value changes in inner maps", () => {
-    const lInitial = IMap<string, IMap<string, number>>({
-      x: IMap({ a: 1 }),
+    const lInitial = IMap<string, IMap<string, Cell<number>>>({
+      x: nm({ a: 1 }),
     });
-    const rInitial = IMap<string, IMap<string, string>>({
-      x: IMap({ p: "hello" }),
+    const rInitial = IMap<string, IMap<string, Cell<string>>>({
+      x: sm({ p: "hello" }),
     });
-    const l = Reactive.create<IMap<string, IMap<string, number>>>(
+    const l = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
       lInitial,
     );
-    const r = Reactive.create<IMap<string, IMap<string, string>>>(
+    const r = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
       rInitial,
     );
@@ -310,7 +321,7 @@ describe("joinMap", () => {
     const joined = joinMap(graph, l, r);
     graph.step();
 
-    expect(joined.snapshot.get("x")!.get(Tuple("a", "p"))).toEqual(Tuple(1, "hello"));
+    expect(joined.snapshot.get("x")!.get(Tuple("a", "p"))).toEqual(tv(1, "hello"));
 
     // Update value in left inner map
     leftChanges.push([{
@@ -320,25 +331,25 @@ describe("joinMap", () => {
     }]);
     graph.step();
 
-    expect(joined.snapshot.get("x")!.get(Tuple("a", "p"))).toEqual(Tuple(99, "hello"));
+    expect(joined.snapshot.get("x")!.get(Tuple("a", "p"))).toEqual(tv(99, "hello"));
   });
 
   it("should handle simultaneous value updates on both sides", () => {
-    const lInitial = IMap<string, IMap<string, number>>({
-      x: IMap({ a: 1, b: 2 }),
+    const lInitial = IMap<string, IMap<string, Cell<number>>>({
+      x: nm({ a: 1, b: 2 }),
     });
-    const rInitial = IMap<string, IMap<string, string>>({
-      x: IMap({ p: "hello", q: "world" }),
+    const rInitial = IMap<string, IMap<string, Cell<string>>>({
+      x: sm({ p: "hello", q: "world" }),
     });
-    const l = Reactive.create<IMap<string, IMap<string, number>>>(
+    const l = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
       lInitial,
     );
-    const r = Reactive.create<IMap<string, IMap<string, string>>>(
+    const r = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
       rInitial,
     );
@@ -362,28 +373,28 @@ describe("joinMap", () => {
     // {a:10, b:2} × {p:"new", q:"world"}
     const xProduct = joined.snapshot.get("x")!;
     expect(xProduct.size).toBe(4);
-    expect(xProduct.get(Tuple("a", "p"))).toEqual(Tuple(10, "new"));
-    expect(xProduct.get(Tuple("a", "q"))).toEqual(Tuple(10, "world"));
-    expect(xProduct.get(Tuple("b", "p"))).toEqual(Tuple(2, "new"));
-    expect(xProduct.get(Tuple("b", "q"))).toEqual(Tuple(2, "world"));
+    expect(xProduct.get(Tuple("a", "p"))).toEqual(tv(10, "new"));
+    expect(xProduct.get(Tuple("a", "q"))).toEqual(tv(10, "world"));
+    expect(xProduct.get(Tuple("b", "p"))).toEqual(tv(2, "new"));
+    expect(xProduct.get(Tuple("b", "q"))).toEqual(tv(2, "world"));
   });
 
   it("should handle left add + right delete of inner entries simultaneously", () => {
-    const lInitial = IMap<string, IMap<string, number>>({
-      x: IMap({ a: 1 }),
+    const lInitial = IMap<string, IMap<string, Cell<number>>>({
+      x: nm({ a: 1 }),
     });
-    const rInitial = IMap<string, IMap<string, string>>({
-      x: IMap({ p: "hello", q: "world" }),
+    const rInitial = IMap<string, IMap<string, Cell<string>>>({
+      x: sm({ p: "hello", q: "world" }),
     });
-    const l = Reactive.create<IMap<string, IMap<string, number>>>(
+    const l = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
       lInitial,
     );
-    const r = Reactive.create<IMap<string, IMap<string, string>>>(
+    const r = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
       rInitial,
     );
@@ -397,7 +408,7 @@ describe("joinMap", () => {
     leftChanges.push([{
       type: "update",
       key: "x",
-      command: [{ type: "add", key: "b", value: 2 }],
+      command: [{ type: "add", key: "b", value: cn(2) }],
     }]);
     rightChanges.push([{
       type: "update",
@@ -409,29 +420,29 @@ describe("joinMap", () => {
     // {a:1, b:2} × {p:"hello"}
     const xProduct = joined.snapshot.get("x")!;
     expect(xProduct.size).toBe(2);
-    expect(xProduct.get(Tuple("a", "p"))).toEqual(Tuple(1, "hello"));
-    expect(xProduct.get(Tuple("b", "p"))).toEqual(Tuple(2, "hello"));
+    expect(xProduct.get(Tuple("a", "p"))).toEqual(tv(1, "hello"));
+    expect(xProduct.get(Tuple("b", "p"))).toEqual(tv(2, "hello"));
     // Deleted pairs should not exist
     expect(xProduct.has(Tuple("a", "q"))).toBe(false);
     expect(xProduct.has(Tuple("b", "q"))).toBe(false);
   });
 
   it("should handle simultaneous deletes from both inner maps", () => {
-    const lInitial = IMap<string, IMap<string, number>>({
-      x: IMap({ a: 1, b: 2 }),
+    const lInitial = IMap<string, IMap<string, Cell<number>>>({
+      x: nm({ a: 1, b: 2 }),
     });
-    const rInitial = IMap<string, IMap<string, string>>({
-      x: IMap({ p: "hello", q: "world" }),
+    const rInitial = IMap<string, IMap<string, Cell<string>>>({
+      x: sm({ p: "hello", q: "world" }),
     });
-    const l = Reactive.create<IMap<string, IMap<string, number>>>(
+    const l = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
       lInitial,
     );
-    const r = Reactive.create<IMap<string, IMap<string, string>>>(
+    const r = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
       rInitial,
     );
@@ -457,25 +468,25 @@ describe("joinMap", () => {
     // {b:2} × {q:"world"}
     const xProduct = joined.snapshot.get("x")!;
     expect(xProduct.size).toBe(1);
-    expect(xProduct.get(Tuple("b", "q"))).toEqual(Tuple(2, "world"));
+    expect(xProduct.get(Tuple("b", "q"))).toEqual(tv(2, "world"));
   });
 
   it("should handle inner clear on one side with changes on the other", () => {
-    const lInitial = IMap<string, IMap<string, number>>({
-      x: IMap({ a: 1, b: 2 }),
+    const lInitial = IMap<string, IMap<string, Cell<number>>>({
+      x: nm({ a: 1, b: 2 }),
     });
-    const rInitial = IMap<string, IMap<string, string>>({
-      x: IMap({ p: "hello" }),
+    const rInitial = IMap<string, IMap<string, Cell<string>>>({
+      x: sm({ p: "hello" }),
     });
-    const l = Reactive.create<IMap<string, IMap<string, number>>>(
+    const l = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
       lInitial,
     );
-    const r = Reactive.create<IMap<string, IMap<string, string>>>(
+    const r = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
       rInitial,
     );
@@ -489,38 +500,38 @@ describe("joinMap", () => {
     leftChanges.push([{
       type: "update",
       key: "x",
-      command: [{ type: "clear" }, { type: "add", key: "c", value: 3 }],
+      command: [{ type: "clear" }, { type: "add", key: "c", value: cn(3) }],
     }]);
     rightChanges.push([{
       type: "update",
       key: "x",
-      command: [{ type: "add", key: "q", value: "world" }],
+      command: [{ type: "add", key: "q", value: cs("world") }],
     }]);
     graph.step();
 
     // {c:3} × {p:"hello", q:"world"}
     const xProduct = joined.snapshot.get("x")!;
     expect(xProduct.size).toBe(2);
-    expect(xProduct.get(Tuple("c", "p"))).toEqual(Tuple(3, "hello"));
-    expect(xProduct.get(Tuple("c", "q"))).toEqual(Tuple(3, "world"));
+    expect(xProduct.get(Tuple("c", "p"))).toEqual(tv(3, "hello"));
+    expect(xProduct.get(Tuple("c", "q"))).toEqual(tv(3, "world"));
   });
 
   it("should handle delete-then-add of same inner key simultaneously with right changes", () => {
-    const lInitial = IMap<string, IMap<string, number>>({
-      x: IMap({ a: 1 }),
+    const lInitial = IMap<string, IMap<string, Cell<number>>>({
+      x: nm({ a: 1 }),
     });
-    const rInitial = IMap<string, IMap<string, string>>({
-      x: IMap({ p: "hello" }),
+    const rInitial = IMap<string, IMap<string, Cell<string>>>({
+      x: sm({ p: "hello" }),
     });
-    const l = Reactive.create<IMap<string, IMap<string, number>>>(
+    const l = Reactive.create<IMap<string, IMap<string, Cell<number>>>>(
       graph,
-      new MapOperations<string, IMap<string, number>>(innerNumberMapOps as any),
+      new MapOperations<string, IMap<string, Cell<number>>>(innerNumberMapOps as any),
       leftChanges,
       lInitial,
     );
-    const r = Reactive.create<IMap<string, IMap<string, string>>>(
+    const r = Reactive.create<IMap<string, IMap<string, Cell<string>>>>(
       graph,
-      new MapOperations<string, IMap<string, string>>(innerStringMapOps as any),
+      new MapOperations<string, IMap<string, Cell<string>>>(innerStringMapOps as any),
       rightChanges,
       rInitial,
     );
@@ -528,7 +539,7 @@ describe("joinMap", () => {
     const joined = joinMap(graph, l, r);
     graph.step();
 
-    expect(joined.snapshot.get("x")!.get(Tuple("a", "p"))).toEqual(Tuple(1, "hello"));
+    expect(joined.snapshot.get("x")!.get(Tuple("a", "p"))).toEqual(tv(1, "hello"));
 
     // Left: delete "a" then add "a" back with new value (replace)
     // Right: update "p" value
@@ -537,7 +548,7 @@ describe("joinMap", () => {
       key: "x",
       command: [
         { type: "delete", key: "a" },
-        { type: "add", key: "a", value: 5 },
+        { type: "add", key: "a", value: cn(5) },
       ],
     }]);
     rightChanges.push([{
@@ -550,7 +561,7 @@ describe("joinMap", () => {
     // {a:5} × {p:"world"}
     const xProduct = joined.snapshot.get("x")!;
     expect(xProduct.size).toBe(1);
-    expect(xProduct.get(Tuple("a", "p"))).toEqual(Tuple(5, "world"));
+    expect(xProduct.get(Tuple("a", "p"))).toEqual(tv(5, "world"));
   });
 
   it("should handle both sides adding then one side deleting the outer key", () => {
@@ -558,12 +569,12 @@ describe("joinMap", () => {
     graph.step();
 
     // Add matching key on both sides
-    leftChanges.push([{ type: "add", key: "x", value: IMap({ a: 1 }) }]);
-    rightChanges.push([{ type: "add", key: "x", value: IMap({ p: "hello" }) }]);
+    leftChanges.push([{ type: "add", key: "x", value: nm({ a: 1 }) }]);
+    rightChanges.push([{ type: "add", key: "x", value: sm({ p: "hello" }) }]);
     graph.step();
 
     expect(joined.snapshot.size).toBe(1);
-    expect(joined.snapshot.get("x")!.get(Tuple("a", "p"))).toEqual(Tuple(1, "hello"));
+    expect(joined.snapshot.get("x")!.get(Tuple("a", "p"))).toEqual(tv(1, "hello"));
 
     // Delete from left
     leftChanges.push([{ type: "delete", key: "x" }]);
@@ -572,12 +583,12 @@ describe("joinMap", () => {
     expect(joined.snapshot.size).toBe(0);
 
     // Re-add on left with different inner map
-    leftChanges.push([{ type: "add", key: "x", value: IMap({ b: 2 }) }]);
+    leftChanges.push([{ type: "add", key: "x", value: nm({ b: 2 }) }]);
     graph.step();
 
     expect(joined.snapshot.size).toBe(1);
     const xProduct = joined.snapshot.get("x")!;
     expect(xProduct.size).toBe(1);
-    expect(xProduct.get(Tuple("b", "p"))).toEqual(Tuple(2, "hello"));
+    expect(xProduct.get(Tuple("b", "p"))).toEqual(tv(2, "hello"));
   });
 });

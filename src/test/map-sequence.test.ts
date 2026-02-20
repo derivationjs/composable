@@ -2,25 +2,36 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { Graph, inputValue, Input } from "derivation";
 import { Map as IMap } from "immutable";
 import { Reactive } from "../reactive.js";
+import { Cell } from "../cell.js";
+import { CellOperations } from "../cell-operations.js";
 import { MapOperations, MapCommand } from "../map-operations.js";
-import { PrimitiveOperations } from "../primitive-operations.js";
 import { sequenceMap } from "../sequence-map.js";
 
-const numberOps = new PrimitiveOperations<number>();
-const reactiveNumberOps = new PrimitiveOperations<Reactive<number>>();
+const numberCellOps = new CellOperations<number>();
+const reactiveNumberOps = new CellOperations<Reactive<Cell<number>>>();
+const wrapReactive = (rx: Reactive<Cell<number>>) => new Cell(rx);
+const unwrapReactive = (cell: Cell<Reactive<Cell<number>>>) => cell.value;
 
 describe("sequenceMap", () => {
   let graph: Graph;
-  let outerChanges: Input<MapCommand<string, Reactive<number>>[]>;
+  let outerChanges: Input<MapCommand<string, Cell<Reactive<Cell<number>>>>[]>;
 
   beforeEach(() => {
     graph = new Graph();
-    outerChanges = inputValue(graph, [] as MapCommand<string, Reactive<number>>[]);
+    outerChanges = inputValue(
+      graph,
+      [] as MapCommand<string, Cell<Reactive<Cell<number>>>>[],
+    );
   });
 
   const makeInner = (initial: number) => {
     const changes = inputValue<number | null>(graph, null);
-    const rx = Reactive.create<number>(graph, numberOps, changes, initial);
+    const rx = Reactive.create<Cell<number>>(
+      graph,
+      numberCellOps,
+      changes,
+      new Cell(initial),
+    );
     return { rx, changes };
   };
 
@@ -40,13 +51,13 @@ describe("sequenceMap", () => {
       const addValue = makeInner(3);
       const updateValue = makeInner(4);
 
-      const source = Reactive.create<IMap<string, Reactive<number>>>(
+      const source = Reactive.create<IMap<string, Cell<Reactive<Cell<number>>>>>(
         graph,
-        new MapOperations<string, Reactive<number>>(reactiveNumberOps),
+        new MapOperations<string, Cell<Reactive<Cell<number>>>>(reactiveNumberOps),
         outerChanges,
         IMap({
-          a: a.rx,
-          b: b.rx,
+          a: wrapReactive(a.rx),
+          b: wrapReactive(b.rx),
         }),
       );
       const sequenced = sequenceMap(graph, source);
@@ -54,10 +65,10 @@ describe("sequenceMap", () => {
 
       const makeCmd = (
         kind: ChangeKind,
-      ): MapCommand<string, Reactive<number>> => {
+      ): MapCommand<string, Cell<Reactive<Cell<number>>>> => {
         switch (kind) {
           case "add":
-            return { type: "add", key: "x", value: addValue.rx };
+            return { type: "add", key: "x", value: wrapReactive(addValue.rx) };
           case "delete":
             return { type: "delete", key: "a" };
           case "update":
@@ -71,61 +82,69 @@ describe("sequenceMap", () => {
       outerChanges.push(cmds);
       graph.step();
 
-      const mapOps = new MapOperations<string, Reactive<number>>(reactiveNumberOps);
-      const expectedOuter = mapOps.apply(IMap({ a: a.rx, b: b.rx }), cmds);
+      const mapOps = new MapOperations<string, Cell<Reactive<Cell<number>>>>(
+        reactiveNumberOps,
+      );
+      const expectedOuter = mapOps.apply(
+        IMap({ a: wrapReactive(a.rx), b: wrapReactive(b.rx) }),
+        cmds,
+      );
       let expected = IMap<string, number>();
       for (const [key, rx] of expectedOuter.entries()) {
-        expected = expected.set(key, rx.snapshot);
+        const inner = unwrapReactive(rx);
+        expected = expected.set(key, inner.snapshot.value);
       }
 
-      expect(sequenced.snapshot.toObject()).toEqual(expected.toObject());
+      expect(sequenced.snapshot.map((cell) => cell.value).toObject()).toEqual(
+        expected.toObject(),
+      );
     },
   );
 
   it("sequences initial values and propagates inner updates", () => {
     const a = makeInner(1);
     const b = makeInner(2);
-    const source = Reactive.create<IMap<string, Reactive<number>>>(
+    const source = Reactive.create<IMap<string, Cell<Reactive<Cell<number>>>>>(
       graph,
-      new MapOperations<string, Reactive<number>>(reactiveNumberOps),
+      new MapOperations<string, Cell<Reactive<Cell<number>>>>(reactiveNumberOps),
       outerChanges,
       IMap({
-        a: a.rx,
-        b: b.rx,
+        a: wrapReactive(a.rx),
+        b: wrapReactive(b.rx),
       }),
     );
 
     const sequenced = sequenceMap(graph, source);
     graph.step();
 
-    expect(sequenced.snapshot.get("a")).toBe(1);
-    expect(sequenced.snapshot.get("b")).toBe(2);
+    expect(sequenced.snapshot.get("a")?.value).toBe(1);
+    expect(sequenced.snapshot.get("b")?.value).toBe(2);
 
     a.changes.push(10);
     graph.step();
 
-    expect(sequenced.snapshot.get("a")).toBe(10);
-    expect(sequenced.snapshot.get("b")).toBe(2);
+    expect(sequenced.snapshot.get("a")?.value).toBe(10);
+    expect(sequenced.snapshot.get("b")?.value).toBe(2);
   });
 
   it("subscribes on add and unsubscribes on delete", () => {
-    const source = Reactive.create<IMap<string, Reactive<number>>>(
+    const source = Reactive.create<IMap<string, Cell<Reactive<Cell<number>>>>>(
       graph,
-      new MapOperations<string, Reactive<number>>(reactiveNumberOps),
+      new MapOperations<string, Cell<Reactive<Cell<number>>>>(reactiveNumberOps),
       outerChanges,
-      IMap<string, Reactive<number>>(),
+      IMap<string, Cell<Reactive<Cell<number>>>>(),
     );
     const sequenced = sequenceMap(graph, source);
     graph.step();
 
     const x = makeInner(5);
-    outerChanges.push([{ type: "add", key: "x", value: x.rx }]);
+    outerChanges.push([{ type: "add", key: "x", value: wrapReactive(x.rx) }]);
     graph.step();
-    expect(sequenced.snapshot.get("x")).toBe(5);
+    expect(sequenced.snapshot.get("x")?.value).toBe(5);
 
     x.changes.push(8);
     graph.step();
-    expect(sequenced.snapshot.get("x")).toBe(8);
+    expect(sequenced.snapshot.get("x")?.value).toBe(8);
 
     outerChanges.push([{ type: "delete", key: "x" }]);
     graph.step();
@@ -139,13 +158,13 @@ describe("sequenceMap", () => {
   it("handles clear followed by add in the same batch", () => {
     const a = makeInner(1);
     const b = makeInner(2);
-    const source = Reactive.create<IMap<string, Reactive<number>>>(
+    const source = Reactive.create<IMap<string, Cell<Reactive<Cell<number>>>>>(
       graph,
-      new MapOperations<string, Reactive<number>>(reactiveNumberOps),
+      new MapOperations<string, Cell<Reactive<Cell<number>>>>(reactiveNumberOps),
       outerChanges,
       IMap({
-        a: a.rx,
-        b: b.rx,
+        a: wrapReactive(a.rx),
+        b: wrapReactive(b.rx),
       }),
     );
     const sequenced = sequenceMap(graph, source);
@@ -154,12 +173,12 @@ describe("sequenceMap", () => {
     const c = makeInner(3);
     outerChanges.push([
       { type: "clear" },
-      { type: "add", key: "c", value: c.rx },
+      { type: "add", key: "c", value: wrapReactive(c.rx) },
     ]);
     graph.step();
 
     expect(sequenced.snapshot.size).toBe(1);
-    expect(sequenced.snapshot.get("c")).toBe(3);
+    expect(sequenced.snapshot.get("c")?.value).toBe(3);
     expect(sequenced.snapshot.has("a")).toBe(false);
     expect(sequenced.snapshot.has("b")).toBe(false);
 
@@ -168,46 +187,46 @@ describe("sequenceMap", () => {
     graph.step();
 
     expect(sequenced.snapshot.size).toBe(1);
-    expect(sequenced.snapshot.get("c")).toBe(7);
+    expect(sequenced.snapshot.get("c")?.value).toBe(7);
     expect(sequenced.snapshot.has("a")).toBe(false);
   });
 
   it("replacing a key via add detaches the old inner reactive", () => {
     const first = makeInner(10);
-    const source = Reactive.create<IMap<string, Reactive<number>>>(
+    const source = Reactive.create<IMap<string, Cell<Reactive<Cell<number>>>>>(
       graph,
-      new MapOperations<string, Reactive<number>>(reactiveNumberOps),
+      new MapOperations<string, Cell<Reactive<Cell<number>>>>(reactiveNumberOps),
       outerChanges,
-      IMap({ a: first.rx }),
+      IMap({ a: wrapReactive(first.rx) }),
     );
     const sequenced = sequenceMap(graph, source);
     graph.step();
-    expect(sequenced.snapshot.get("a")).toBe(10);
+    expect(sequenced.snapshot.get("a")?.value).toBe(10);
 
     const second = makeInner(20);
-    outerChanges.push([{ type: "add", key: "a", value: second.rx }]);
+    outerChanges.push([{ type: "add", key: "a", value: wrapReactive(second.rx) }]);
     graph.step();
-    expect(sequenced.snapshot.get("a")).toBe(20);
+    expect(sequenced.snapshot.get("a")?.value).toBe(20);
 
     first.changes.push(30);
     graph.step();
-    expect(sequenced.snapshot.get("a")).toBe(20);
+    expect(sequenced.snapshot.get("a")?.value).toBe(20);
 
     second.changes.push(21);
     graph.step();
-    expect(sequenced.snapshot.get("a")).toBe(21);
+    expect(sequenced.snapshot.get("a")?.value).toBe(21);
   });
 
   it("applies multiple operations in one batch across keys", () => {
     const a = makeInner(1);
     const b = makeInner(2);
-    const source = Reactive.create<IMap<string, Reactive<number>>>(
+    const source = Reactive.create<IMap<string, Cell<Reactive<Cell<number>>>>>(
       graph,
-      new MapOperations<string, Reactive<number>>(reactiveNumberOps),
+      new MapOperations<string, Cell<Reactive<Cell<number>>>>(reactiveNumberOps),
       outerChanges,
       IMap({
-        a: a.rx,
-        b: b.rx,
+        a: wrapReactive(a.rx),
+        b: wrapReactive(b.rx),
       }),
     );
     const sequenced = sequenceMap(graph, source);
@@ -217,13 +236,16 @@ describe("sequenceMap", () => {
     const d = makeInner(4);
     outerChanges.push([
       { type: "delete", key: "a" },
-      { type: "add", key: "c", value: c.rx },
-      { type: "add", key: "d", value: d.rx },
+      { type: "add", key: "c", value: wrapReactive(c.rx) },
+      { type: "add", key: "d", value: wrapReactive(d.rx) },
       { type: "delete", key: "b" },
     ]);
     graph.step();
 
-    expect(sequenced.snapshot.toObject()).toEqual({ c: 3, d: 4 });
+    expect(sequenced.snapshot.map((cell) => cell.value).toObject()).toEqual({
+      c: 3,
+      d: 4,
+    });
 
     a.changes.push(100);
     b.changes.push(200);
@@ -231,16 +253,19 @@ describe("sequenceMap", () => {
     d.changes.push(40);
     graph.step();
 
-    expect(sequenced.snapshot.toObject()).toEqual({ c: 30, d: 40 });
+    expect(sequenced.snapshot.map((cell) => cell.value).toObject()).toEqual({
+      c: 30,
+      d: 40,
+    });
   });
 
   it("uses last structural operation for the same key in a batch", () => {
     const first = makeInner(1);
-    const source = Reactive.create<IMap<string, Reactive<number>>>(
+    const source = Reactive.create<IMap<string, Cell<Reactive<Cell<number>>>>>(
       graph,
-      new MapOperations<string, Reactive<number>>(reactiveNumberOps),
+      new MapOperations<string, Cell<Reactive<Cell<number>>>>(reactiveNumberOps),
       outerChanges,
-      IMap({ k: first.rx }),
+      IMap({ k: wrapReactive(first.rx) }),
     );
     const sequenced = sequenceMap(graph, source);
     graph.step();
@@ -249,55 +274,55 @@ describe("sequenceMap", () => {
     const third = makeInner(3);
     outerChanges.push([
       { type: "delete", key: "k" },
-      { type: "add", key: "k", value: second.rx },
+      { type: "add", key: "k", value: wrapReactive(second.rx) },
       { type: "delete", key: "k" },
-      { type: "add", key: "k", value: third.rx },
+      { type: "add", key: "k", value: wrapReactive(third.rx) },
     ]);
     graph.step();
 
-    expect(sequenced.snapshot.get("k")).toBe(3);
+    expect(sequenced.snapshot.get("k")?.value).toBe(3);
 
     first.changes.push(11);
     second.changes.push(22);
     third.changes.push(33);
     graph.step();
 
-    expect(sequenced.snapshot.get("k")).toBe(33);
+    expect(sequenced.snapshot.get("k")?.value).toBe(33);
   });
 
   it("replaces a key when outer map emits update with a new inner reactive", () => {
     const first = makeInner(1);
-    const source = Reactive.create<IMap<string, Reactive<number>>>(
+    const source = Reactive.create<IMap<string, Cell<Reactive<Cell<number>>>>>(
       graph,
-      new MapOperations<string, Reactive<number>>(reactiveNumberOps),
+      new MapOperations<string, Cell<Reactive<Cell<number>>>>(reactiveNumberOps),
       outerChanges,
-      IMap({ k: first.rx }),
+      IMap({ k: wrapReactive(first.rx) }),
     );
     const sequenced = sequenceMap(graph, source);
     graph.step();
-    expect(sequenced.snapshot.get("k")).toBe(1);
+    expect(sequenced.snapshot.get("k")?.value).toBe(1);
 
     const second = makeInner(2);
     outerChanges.push([{ type: "update", key: "k", command: second.rx }]);
     graph.step();
 
     // Expected: update should replace the inner reactive for key "k".
-    expect(sequenced.snapshot.get("k")).toBe(2);
+    expect(sequenced.snapshot.get("k")?.value).toBe(2);
 
     first.changes.push(11);
     second.changes.push(22);
     graph.step();
 
     // Expected: old inner reactive should be detached after replacement.
-    expect(sequenced.snapshot.get("k")).toBe(22);
+    expect(sequenced.snapshot.get("k")?.value).toBe(22);
   });
 
   it("ignores update for a missing key", () => {
-    const source = Reactive.create<IMap<string, Reactive<number>>>(
+    const source = Reactive.create<IMap<string, Cell<Reactive<Cell<number>>>>>(
       graph,
-      new MapOperations<string, Reactive<number>>(reactiveNumberOps),
+      new MapOperations<string, Cell<Reactive<Cell<number>>>>(reactiveNumberOps),
       outerChanges,
-      IMap<string, Reactive<number>>(),
+      IMap<string, Cell<Reactive<Cell<number>>>>(),
     );
     const sequenced = sequenceMap(graph, source);
     graph.step();

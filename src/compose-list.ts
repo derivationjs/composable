@@ -1,13 +1,14 @@
 import { List, Map as IMap } from "immutable";
 import { Graph } from "derivation";
 import { Reactive } from "./reactive.js";
+import { Cell } from "./cell.js";
 import { ListCommand, ListOperations } from "./list-operations.js";
 import { MapCommand, MapOperations } from "./map-operations.js";
 import { ID } from "./decompose-list.js";
 
 export function composeList<T>(
   graph: Graph,
-  idList: Reactive<List<ID>>,
+  idList: Reactive<List<Cell<ID>>>,
   map: Reactive<IMap<ID, T>>,
 ): Reactive<List<T>> {
   const valueOps = map.operations.valueOperations;
@@ -15,12 +16,12 @@ export function composeList<T>(
 
   // Build initial list by looking up each ID in the map
   const initialList = List<T>(
-    idList.previousSnapshot.map((id) => map.previousSnapshot.get(id)!),
+    idList.previousSnapshot.map((id) => map.previousSnapshot.get(id.value)!),
   );
 
   const changes = idList.changes
     .zip(map.changes, (idCmds, mapCmds) => ({
-      idCmds: (idCmds ?? []) as ListCommand<ID>[],
+      idCmds: (idCmds ?? []) as ListCommand<Cell<ID>>[],
       mapCmds: (mapCmds ?? []) as MapCommand<ID, T>[],
     }))
     .accumulate(
@@ -37,9 +38,9 @@ export function composeList<T>(
         for (const cmd of idCmds) {
           switch (cmd.type) {
             case "insert": {
-              const value = map.snapshot.get(cmd.value)!;
+              const value = map.snapshot.get(cmd.value.value)!;
               ids = ids.insert(cmd.index, cmd.value);
-              insertedIds.add(cmd.value);
+              insertedIds.add(cmd.value.value);
               outputCmds.push({ type: "insert", index: cmd.index, value });
               break;
             }
@@ -67,7 +68,7 @@ export function composeList<T>(
         // Process value updates from the map (skip IDs inserted this batch)
         for (const cmd of mapCmds) {
           if (cmd.type === "update" && !insertedIds.has(cmd.key)) {
-            const index = ids.indexOf(cmd.key);
+            const index = ids.findIndex((id) => id.value === cmd.key);
             if (index >= 0) {
               outputCmds.push({
                 type: "update",

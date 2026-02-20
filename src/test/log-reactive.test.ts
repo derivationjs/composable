@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { Graph } from "derivation";
 import { Reactive } from "../reactive.js";
 import { Log } from "../log.js";
+import { Cell } from "../cell.js";
+import { CellOperations } from "../cell-operations.js";
 import { LogOperations } from "../log-operations.js";
 import { LogChangeInput } from "../log-change-input.js";
 import {
@@ -13,8 +15,15 @@ import {
 } from "../log-reactive.js";
 import { List } from "immutable";
 import { ListOperations, ListCommand } from "../list-operations.js";
-import { PrimitiveOperations } from "../primitive-operations.js";
-import { mapList } from "../list-reactive.js";
+
+const numberCellOps = new CellOperations<number>();
+const stringCellOps = new CellOperations<string>();
+const numberCell = (value: number) => new Cell(value);
+const stringCell = (value: string) => new Cell(value);
+const listNumberValues = (list: List<Cell<number>>) =>
+  list.map((x) => x.value).toArray();
+const listStringValues = (list: List<Cell<string>>) =>
+  list.map((x) => x.value).toArray();
 
 describe("Log Reactive Operations", () => {
   it("foldLog accumulates log entries", () => {
@@ -143,148 +152,148 @@ describe("Log Reactive Operations", () => {
 
   it("applyLog builds reactive list from command log", () => {
     const c = new Graph();
-    const input = new LogChangeInput<ListCommand<string>[]>(c);
-    const rlog = Reactive.create<Log<ListCommand<string>[]>>(
+    const input = new LogChangeInput<ListCommand<Cell<string>>[]>(c);
+    const rlog = Reactive.create<Log<ListCommand<Cell<string>>[]>>(
       c,
-      new LogOperations<ListCommand<string>[]>(),
+      new LogOperations<ListCommand<Cell<string>>[]>(),
       input,
-      new Log<ListCommand<string>[]>(),
+      new Log<ListCommand<Cell<string>>[]>(),
     );
 
-    const list = applyLog<List<string>>(
+    const list = applyLog<List<Cell<string>>>(
       c,
       rlog,
-      new ListOperations(new PrimitiveOperations<string>()),
-      List<string>(),
+      new ListOperations(stringCellOps),
+      List<Cell<string>>(),
     );
 
     expect(list.snapshot.size).toBe(0);
 
     // Insert some items
     input.add([
-      { type: "insert", index: 0, value: "apple" },
-      { type: "insert", index: 1, value: "banana" },
+      { type: "insert", index: 0, value: stringCell("apple") },
+      { type: "insert", index: 1, value: stringCell("banana") },
     ]);
     c.step();
 
     expect(list.snapshot.size).toBe(2);
-    expect(list.snapshot.get(0)).toBe("apple");
-    expect(list.snapshot.get(1)).toBe("banana");
+    expect(list.snapshot.get(0)?.value).toBe("apple");
+    expect(list.snapshot.get(1)?.value).toBe("banana");
 
     // Add more and remove one
     input.add([
-      { type: "insert", index: 2, value: "cherry" },
+      { type: "insert", index: 2, value: stringCell("cherry") },
       { type: "remove", index: 0 },
     ]);
     c.step();
 
     expect(list.snapshot.size).toBe(2);
-    expect(list.snapshot.get(0)).toBe("banana");
-    expect(list.snapshot.get(1)).toBe("cherry");
+    expect(list.snapshot.get(0)?.value).toBe("banana");
+    expect(list.snapshot.get(1)?.value).toBe("cherry");
   });
 
   it("applyLog handles initial log entries", () => {
     const c = new Graph();
 
     // Create initial log with some commands
-    const initialLog = new Log<ListCommand<number>[]>()
+    const initialLog = new Log<ListCommand<Cell<number>>[]>()
       .append([
-        { type: "insert", index: 0, value: 10 },
-        { type: "insert", index: 1, value: 20 },
+        { type: "insert", index: 0, value: numberCell(10) },
+        { type: "insert", index: 1, value: numberCell(20) },
       ])
-      .append([{ type: "insert", index: 2, value: 30 }]);
+      .append([{ type: "insert", index: 2, value: numberCell(30) }]);
 
-    const input = new LogChangeInput<ListCommand<number>[]>(c);
-    const rlog = Reactive.create<Log<ListCommand<number>[]>>(
+    const input = new LogChangeInput<ListCommand<Cell<number>>[]>(c);
+    const rlog = Reactive.create<Log<ListCommand<Cell<number>>[]>>(
       c,
-      new LogOperations<ListCommand<number>[]>(),
+      new LogOperations<ListCommand<Cell<number>>[]>(),
       input,
       initialLog,
     );
 
-    const list = applyLog<List<number>>(
+    const list = applyLog<List<Cell<number>>>(
       c,
       rlog,
-      new ListOperations(new PrimitiveOperations<number>()),
-      List<number>(),
+      new ListOperations(numberCellOps),
+      List<Cell<number>>(),
     );
 
     // Initial snapshot should have all commands applied
     expect(list.snapshot.size).toBe(3);
-    expect(list.snapshot.get(0)).toBe(10);
-    expect(list.snapshot.get(1)).toBe(20);
-    expect(list.snapshot.get(2)).toBe(30);
+    expect(list.snapshot.get(0)?.value).toBe(10);
+    expect(list.snapshot.get(1)?.value).toBe(20);
+    expect(list.snapshot.get(2)?.value).toBe(30);
 
     // Add more commands
-    input.add([{ type: "insert", index: 0, value: 5 }]);
+    input.add([{ type: "insert", index: 0, value: numberCell(5) }]);
     c.step();
 
     expect(list.snapshot.size).toBe(4);
-    expect(list.snapshot.get(0)).toBe(5);
-    expect(list.snapshot.get(1)).toBe(10);
+    expect(list.snapshot.get(0)?.value).toBe(5);
+    expect(list.snapshot.get(1)?.value).toBe(10);
   });
 
   it("applyLog handles move commands", () => {
     const c = new Graph();
-    const input = new LogChangeInput<ListCommand<string>[]>(c);
-    const rlog = Reactive.create<Log<ListCommand<string>[]>>(
+    const input = new LogChangeInput<ListCommand<Cell<string>>[]>(c);
+    const rlog = Reactive.create<Log<ListCommand<Cell<string>>[]>>(
       c,
-      new LogOperations<ListCommand<string>[]>(),
+      new LogOperations<ListCommand<Cell<string>>[]>(),
       input,
-      new Log<ListCommand<string>[]>(),
+      new Log<ListCommand<Cell<string>>[]>(),
     );
 
-    const list = applyLog<List<string>>(
+    const list = applyLog<List<Cell<string>>>(
       c,
       rlog,
-      new ListOperations(new PrimitiveOperations<string>()),
-      List<string>(),
+      new ListOperations(stringCellOps),
+      List<Cell<string>>(),
     );
 
     // Insert initial items
     input.add([
-      { type: "insert", index: 0, value: "a" },
-      { type: "insert", index: 1, value: "b" },
-      { type: "insert", index: 2, value: "c" },
+      { type: "insert", index: 0, value: stringCell("a") },
+      { type: "insert", index: 1, value: stringCell("b") },
+      { type: "insert", index: 2, value: stringCell("c") },
     ]);
     c.step();
 
-    expect(list.snapshot.toArray()).toEqual(["a", "b", "c"]);
+    expect(listStringValues(list.snapshot)).toEqual(["a", "b", "c"]);
 
     // Move item from index 0 to index 2
     input.add([{ type: "move", from: 0, to: 2 }]);
     c.step();
 
-    expect(list.snapshot.toArray()).toEqual(["b", "c", "a"]);
+    expect(listStringValues(list.snapshot)).toEqual(["b", "c", "a"]);
   });
 
   it("applyLog with multiple command batches", () => {
     const c = new Graph();
-    const input = new LogChangeInput<ListCommand<string>[]>(c);
-    const rlog = Reactive.create<Log<ListCommand<string>[]>>(
+    const input = new LogChangeInput<ListCommand<Cell<string>>[]>(c);
+    const rlog = Reactive.create<Log<ListCommand<Cell<string>>[]>>(
       c,
-      new LogOperations<ListCommand<string>[]>(),
+      new LogOperations<ListCommand<Cell<string>>[]>(),
       input,
-      new Log<ListCommand<string>[]>(),
+      new Log<ListCommand<Cell<string>>[]>(),
     );
 
-    const list = applyLog<List<string>>(
+    const list = applyLog<List<Cell<string>>>(
       c,
       rlog,
-      new ListOperations(new PrimitiveOperations<string>()),
-      List<string>(),
+      new ListOperations(stringCellOps),
+      List<Cell<string>>(),
     );
 
     // Push multiple command batches at once
     input.addAll([
-      [{ type: "insert", index: 0, value: "x" }],
-      [{ type: "insert", index: 1, value: "y" }],
-      [{ type: "insert", index: 2, value: "z" }],
+      [{ type: "insert", index: 0, value: stringCell("x") }],
+      [{ type: "insert", index: 1, value: stringCell("y") }],
+      [{ type: "insert", index: 2, value: stringCell("z") }],
     ]);
     c.step();
 
     expect(list.snapshot.size).toBe(3);
-    expect(list.snapshot.toArray()).toEqual(["x", "y", "z"]);
+    expect(listStringValues(list.snapshot)).toEqual(["x", "y", "z"]);
   });
 
   describe("applyLogSequential", () => {
@@ -299,13 +308,13 @@ describe("Log Reactive Operations", () => {
       );
 
       // Function that appends each event to the list
-      const list = applyLogSequential<List<string>, string>(
+      const list = applyLogSequential<List<Cell<string>>, string>(
         c,
         rlog,
-        new ListOperations(new PrimitiveOperations<string>()),
-        List<string>(),
+        new ListOperations(stringCellOps),
+        List<Cell<string>>(),
         (state, event) => {
-          return [{ type: "insert", index: state.size, value: event }];
+          return [{ type: "insert", index: state.size, value: stringCell(event) }];
         },
       );
 
@@ -315,14 +324,14 @@ describe("Log Reactive Operations", () => {
       c.step();
 
       expect(list.snapshot.size).toBe(1);
-      expect(list.snapshot.get(0)).toBe("apple");
+      expect(list.snapshot.get(0)?.value).toBe("apple");
 
       input.add("banana");
       c.step();
 
       expect(list.snapshot.size).toBe(2);
-      expect(list.snapshot.get(0)).toBe("apple");
-      expect(list.snapshot.get(1)).toBe("banana");
+      expect(list.snapshot.get(0)?.value).toBe("apple");
+      expect(list.snapshot.get(1)?.value).toBe("banana");
     });
 
     it("handles state-dependent command generation", () => {
@@ -336,17 +345,17 @@ describe("Log Reactive Operations", () => {
       );
 
       // Function that adds a number or clears based on the event
-      const list = applyLogSequential<List<number>, string>(
+      const list = applyLogSequential<List<Cell<number>>, string>(
         c,
         rlog,
-        new ListOperations(new PrimitiveOperations<number>()),
-        List<number>(),
+        new ListOperations(numberCellOps),
+        List<Cell<number>>(),
         (state, event) => {
           if (event === "add") {
-            return [{ type: "insert", index: state.size, value: state.size }];
+            return [{ type: "insert", index: state.size, value: numberCell(state.size) }];
           } else {
             // Clear all
-            const commands: ListCommand<number>[] = [];
+            const commands: ListCommand<Cell<number>>[] = [];
             for (let i = state.size - 1; i >= 0; i--) {
               commands.push({ type: "remove", index: i });
             }
@@ -359,23 +368,23 @@ describe("Log Reactive Operations", () => {
 
       input.add("add");
       c.step();
-      expect(list.snapshot.toArray()).toEqual([0]);
+      expect(listNumberValues(list.snapshot)).toEqual([0]);
 
       input.add("add");
       c.step();
-      expect(list.snapshot.toArray()).toEqual([0, 1]);
+      expect(listNumberValues(list.snapshot)).toEqual([0, 1]);
 
       input.add("add");
       c.step();
-      expect(list.snapshot.toArray()).toEqual([0, 1, 2]);
+      expect(listNumberValues(list.snapshot)).toEqual([0, 1, 2]);
 
       input.add("clear");
       c.step();
-      expect(list.snapshot.toArray()).toEqual([]);
+      expect(listNumberValues(list.snapshot)).toEqual([]);
 
       input.add("add");
       c.step();
-      expect(list.snapshot.toArray()).toEqual([0]);
+      expect(listNumberValues(list.snapshot)).toEqual([0]);
     });
 
     it("processes multiple events in one batch sequentially", () => {
@@ -389,13 +398,13 @@ describe("Log Reactive Operations", () => {
       );
 
       // Each event generates a command to insert at the beginning
-      const list = applyLogSequential<List<number>, number>(
+      const list = applyLogSequential<List<Cell<number>>, number>(
         c,
         rlog,
-        new ListOperations(new PrimitiveOperations<number>()),
-        List<number>(),
+        new ListOperations(numberCellOps),
+        List<Cell<number>>(),
         (state, event) => {
-          return [{ type: "insert", index: 0, value: event }];
+          return [{ type: "insert", index: 0, value: numberCell(event) }];
         },
       );
 
@@ -404,7 +413,7 @@ describe("Log Reactive Operations", () => {
       c.step();
 
       // Should be inserted in reverse order (3, 2, 1) since each goes at index 0
-      expect(list.snapshot.toArray()).toEqual([3, 2, 1]);
+      expect(listNumberValues(list.snapshot)).toEqual([3, 2, 1]);
     });
 
     it("handles initial log entries", () => {
@@ -421,27 +430,27 @@ describe("Log Reactive Operations", () => {
         initialLog,
       );
 
-      const list = applyLogSequential<List<string>, string>(
+      const list = applyLogSequential<List<Cell<string>>, string>(
         c,
         rlog,
-        new ListOperations(new PrimitiveOperations<string>()),
-        List<string>(),
+        new ListOperations(stringCellOps),
+        List<Cell<string>>(),
         (state, event) => {
-          return [{ type: "insert", index: state.size, value: event }];
+          return [{ type: "insert", index: state.size, value: stringCell(event) }];
         },
       );
 
       // Initial snapshot should have processed initial log entries
       expect(list.snapshot.size).toBe(2);
-      expect(list.snapshot.get(0)).toBe("foo");
-      expect(list.snapshot.get(1)).toBe("bar");
+      expect(list.snapshot.get(0)?.value).toBe("foo");
+      expect(list.snapshot.get(1)?.value).toBe("bar");
 
       // Add more events
       input.add("baz");
       c.step();
 
       expect(list.snapshot.size).toBe(3);
-      expect(list.snapshot.get(2)).toBe("baz");
+      expect(list.snapshot.get(2)?.value).toBe("baz");
     });
 
     it("generates multiple commands per event", () => {
@@ -455,18 +464,18 @@ describe("Log Reactive Operations", () => {
       );
 
       // Each event generates two inserts: the value and its uppercase version
-      const list = applyLogSequential<List<string>, string>(
+      const list = applyLogSequential<List<Cell<string>>, string>(
         c,
         rlog,
-        new ListOperations(new PrimitiveOperations<string>()),
-        List<string>(),
+        new ListOperations(stringCellOps),
+        List<Cell<string>>(),
         (state, event) => {
           return [
-            { type: "insert", index: state.size, value: event },
+            { type: "insert", index: state.size, value: stringCell(event) },
             {
               type: "insert",
               index: state.size + 1,
-              value: event.toUpperCase(),
+              value: stringCell(event.toUpperCase()),
             },
           ];
         },
@@ -474,12 +483,12 @@ describe("Log Reactive Operations", () => {
       input.add("hello");
       c.step();
 
-      expect(list.snapshot.toArray()).toEqual(["hello", "HELLO"]);
+      expect(listStringValues(list.snapshot)).toEqual(["hello", "HELLO"]);
 
       input.add("world");
       c.step();
 
-      expect(list.snapshot.toArray()).toEqual([
+      expect(listStringValues(list.snapshot)).toEqual([
         "hello",
         "HELLO",
         "world",
@@ -498,30 +507,30 @@ describe("Log Reactive Operations", () => {
       );
 
       // Insert the cumulative sum of events
-      const list = applyLogSequential<List<number>, number>(
+      const list = applyLogSequential<List<Cell<number>>, number>(
         c,
         rlog,
-        new ListOperations(new PrimitiveOperations<number>()),
-        List<number>(),
+        new ListOperations(numberCellOps),
+        List<Cell<number>>(),
         (state, event) => {
           // Get the last cumulative sum, or 0 if empty
-          const prevSum = state.size > 0 ? state.get(state.size - 1)! : 0;
+          const prevSum = state.size > 0 ? state.get(state.size - 1)!.value : 0;
           const sum = prevSum + event;
-          return [{ type: "insert", index: state.size, value: sum }];
+          return [{ type: "insert", index: state.size, value: numberCell(sum) }];
         },
       );
 
       input.add(5);
       c.step();
-      expect(list.snapshot.toArray()).toEqual([5]);
+      expect(listNumberValues(list.snapshot)).toEqual([5]);
 
       input.add(3);
       c.step();
-      expect(list.snapshot.toArray()).toEqual([5, 8]); // 5 + 3
+      expect(listNumberValues(list.snapshot)).toEqual([5, 8]); // 5 + 3
 
       input.add(2);
       c.step();
-      expect(list.snapshot.toArray()).toEqual([5, 8, 10]); // 5 + 3 + 2
+      expect(listNumberValues(list.snapshot)).toEqual([5, 8, 10]); // 5 + 3 + 2
     });
 
     it("handles empty command arrays", () => {
@@ -535,14 +544,14 @@ describe("Log Reactive Operations", () => {
       );
 
       // Only insert even numbers
-      const list = applyLogSequential<List<number>, number>(
+      const list = applyLogSequential<List<Cell<number>>, number>(
         c,
         rlog,
-        new ListOperations(new PrimitiveOperations<number>()),
-        List<number>(),
+        new ListOperations(numberCellOps),
+        List<Cell<number>>(),
         (state, event) => {
           if (event % 2 === 0) {
-            return [{ type: "insert", index: state.size, value: event }];
+            return [{ type: "insert", index: state.size, value: numberCell(event) }];
           }
           return []; // No commands for odd numbers
         },
@@ -551,7 +560,7 @@ describe("Log Reactive Operations", () => {
       input.addAll([1, 2, 3, 4, 5, 6]);
       c.step();
 
-      expect(list.snapshot.toArray()).toEqual([2, 4, 6]);
+      expect(listNumberValues(list.snapshot)).toEqual([2, 4, 6]);
     });
 
     it("works with derived reactive values", () => {
@@ -564,20 +573,20 @@ describe("Log Reactive Operations", () => {
         new Log<string>(),
       );
 
-      const list = applyLogSequential<List<string>, string>(
+      const list = applyLogSequential<List<Cell<string>>, string>(
         c,
         rlog,
-        new ListOperations(new PrimitiveOperations<string>()),
-        List<string>(),
+        new ListOperations(stringCellOps),
+        List<Cell<string>>(),
         (state, event) => {
-          return [{ type: "insert", index: state.size, value: event }];
+          return [{ type: "insert", index: state.size, value: stringCell(event) }];
         },
       );
 
       // Verify we can create derived reactive values from the result
       const length = list.changes.accumulate(0, (count, cmd) => {
         if (cmd === null) return count;
-        const commands = cmd as ListCommand<string>[];
+        const commands = cmd as ListCommand<Cell<string>>[];
         return commands.reduce((c, command) => {
           if (command.type === "insert") return c + 1;
           if (command.type === "remove") return c - 1;

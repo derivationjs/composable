@@ -1,21 +1,23 @@
 import { List, Map as IMap } from "immutable";
 import { Graph } from "derivation";
 import { Reactive } from "./reactive.js";
+import { Cell } from "./cell.js";
 import { decomposeList, ID } from "./decompose-list.js";
 import { MapOperations } from "./map-operations.js";
 import { ListOperations } from "./list-operations.js";
 import { mapMap } from "./map-reactive.js";
 
-function materializeGroupedList<X, K>(
-  ids: List<ID>,
+function materializeGroupedList<X, K extends NonNullable<unknown>>(
+  ids: List<Cell<ID>>,
   values: IMap<ID, X>,
-  keys: IMap<ID, K>,
+  keys: IMap<ID, Cell<K>>,
 ): IMap<K, List<X>> {
   let grouped = IMap<K, List<X>>();
   for (const id of ids) {
-    const key = keys.get(id);
-    const value = values.get(id);
-    if (key === undefined || value === undefined) continue;
+    const keyCell = keys.get(id.value);
+    const value = values.get(id.value);
+    if (keyCell === undefined || value === undefined) continue;
+    const key = keyCell.value;
     const existing = grouped.get(key) ?? List<X>();
     grouped = grouped.set(key, existing.push(value));
   }
@@ -28,10 +30,10 @@ function materializeGroupedList<X, K>(
  * Items are grouped by the key returned by the key function. When an item's key changes,
  * it moves from one group to another. Groups are created/deleted as needed.
  */
-export function groupByList<X, K>(
+export function groupByList<X, K extends NonNullable<unknown>>(
   graph: Graph,
   list: Reactive<List<X>>,
-  keyFn: (x: Reactive<X>) => Reactive<K>,
+  keyFn: (x: Reactive<X>) => Reactive<Cell<K>>,
 ): Reactive<IMap<K, List<X>>> {
   // TODO: Make this fully incremental/stateful by emitting group-level deltas
   // rather than rebuilding all groups and using a full replace command.

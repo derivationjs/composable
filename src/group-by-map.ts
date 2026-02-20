@@ -1,20 +1,21 @@
 import { Map as IMap } from "immutable";
 import { Graph } from "derivation";
 import { Reactive } from "./reactive.js";
-import { Primitive, Operations } from "./operations.js";
+import { Cell } from "./cell.js";
+import { Operations } from "./operations.js";
 import { MapOperations } from "./map-operations.js";
 import { mapMap } from "./map-reactive.js";
 
-function materializeGroupedMap<ID, T, K>(
+function materializeGroupedMap<ID, T, K extends NonNullable<unknown>>(
   values: IMap<ID, T>,
-  keys: IMap<ID, K>,
+  keys: IMap<ID, Cell<K>>,
 ): IMap<K, IMap<ID, T>> {
   let grouped = IMap<K, IMap<ID, T>>();
   for (const [id, value] of values) {
     const key = keys.get(id);
     if (key === undefined) continue;
-    const existing = grouped.get(key) ?? IMap<ID, T>();
-    grouped = grouped.set(key, existing.set(id, value));
+    const existing = grouped.get(key.value) ?? IMap<ID, T>();
+    grouped = grouped.set(key.value, existing.set(id, value));
   }
   return grouped;
 }
@@ -26,13 +27,10 @@ function materializeGroupedMap<ID, T, K>(
  * reactive value. When an item's key changes, it moves from one group to another.
  * Groups are created/deleted as needed.
  */
-export function groupByMap<ID, T, K>(
+export function groupByMap<ID, T, K extends NonNullable<unknown>>(
   graph: Graph,
   source: Reactive<IMap<ID, T>>,
-  f: (x: Reactive<T>) => Reactive<K>,
-  ..._check: [Primitive<K>] extends [never]
-    ? [error: "K must be a primitive type, not a collection"]
-    : []
+  f: (x: Reactive<T>) => Reactive<Cell<K>>,
 ): Reactive<IMap<K, IMap<ID, T>>> {
   // TODO: Make this fully incremental/stateful by producing minimal outer/inner
   // map commands instead of rematerializing grouped output and replacing it.

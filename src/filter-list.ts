@@ -1,19 +1,20 @@
 import { List, Map as IMap } from "immutable";
 import { Graph } from "derivation";
 import { Reactive } from "./reactive.js";
+import { Cell } from "./cell.js";
 import { decomposeList, ID } from "./decompose-list.js";
 import { ListOperations } from "./list-operations.js";
 import { mapMap } from "./map-reactive.js";
 
 function materializeFilteredList<X>(
-  ids: List<ID>,
+  ids: List<Cell<ID>>,
   values: IMap<ID, X>,
-  selected: IMap<ID, boolean>,
+  selected: IMap<ID, Cell<boolean>>,
 ): List<X> {
   return List(
     ids
-      .filter((id) => selected.get(id) === true)
-      .map((id) => values.get(id)!)
+      .filter((id) => selected.get(id.value)?.value === true)
+      .map((id) => values.get(id.value)!)
       .toArray(),
   );
 }
@@ -27,7 +28,7 @@ function materializeFilteredList<X>(
 export function filterList<X>(
   graph: Graph,
   list: Reactive<List<X>>,
-  predicate: (x: Reactive<X>) => Reactive<boolean>,
+  predicate: (x: Reactive<X>) => Reactive<Cell<boolean>>,
 ): Reactive<List<X>> {
   // TODO: Make this fully incremental/stateful by emitting minimal list commands
   // instead of materializing the full filtered list and replacing it on changes.

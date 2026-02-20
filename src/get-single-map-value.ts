@@ -1,21 +1,21 @@
 import { Graph } from "derivation";
 import { Map as IMap, is } from "immutable";
 import { Reactive } from "./reactive.js";
-import { Changes, asBase } from "./operations.js";
+import { Changes, Operable, asBase } from "./operations.js";
 
 /**
  * Extracts the only value from a reactive Map when its size is 1.
  * Falls back to defaultValue when the map has size 0 or >1.
  */
-export function getSingleMapValue<K, V>(
+export function getSingleMapValue<K, V extends Operable>(
   graph: Graph,
   source: Reactive<IMap<K, V>>,
   defaultValue: V,
 ): Reactive<V> {
   const mapOps = source.operations;
-  const baseMapOps = asBase(mapOps);
+  const baseMapOps = asBase<IMap<K, V>>(mapOps);
   const valueOps = mapOps.valueOperations;
-  const baseValueOps = asBase(valueOps);
+  const baseValueOps = asBase<V>(valueOps);
 
   const valueFromMap = (map: IMap<K, V>): V => {
     if (map.size !== 1) {

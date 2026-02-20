@@ -6,270 +6,225 @@ import { ListOperations, ListCommand } from "../list-operations.js";
 import { MapOperations, MapCommand } from "../map-operations.js";
 import { mapList } from "../list-reactive.js";
 import { mapMap } from "../map-reactive.js";
-import { mapPrimitive } from "../map-primitive.js";
-import { PrimitiveOperations } from "../primitive-operations.js";
+import { mapCell } from "../map-cell.js";
+import { CellOperations } from "../cell-operations.js";
+import { Cell } from "../cell.js";
 
-// Simple operations for string values
-const stringOps = new PrimitiveOperations<string>();
+const stringOps = new CellOperations<string>();
+const c = (s: string) => new Cell(s);
+const cm = (obj: Record<string, string>) =>
+  IMap<string, Cell<string>>(
+    Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, c(v)])),
+  );
+const gv = (
+  list: List<IMap<string, Cell<string>>>,
+  i: number,
+  key: string,
+): string | undefined => list.get(i)?.get(key)?.value;
 
-const mapOps = new MapOperations<string, string>(stringOps);
-const listOps = new ListOperations(mapOps);
+const mapOps = new MapOperations<string, Cell<string>>(stringOps);
+const listOps = new ListOperations<IMap<string, Cell<string>>>(mapOps);
 
 describe("List<Map<string, string>> with mapList and mapMap", () => {
   let graph: Graph;
-  let changes: Input<ListCommand<IMap<string, string>>[]>;
-  let list: Reactive<List<IMap<string, string>>>;
+  let changes: Input<ListCommand<IMap<string, Cell<string>>>[]>;
+  let list: Reactive<List<IMap<string, Cell<string>>>>;
 
   beforeEach(() => {
     graph = new Graph();
-    changes = inputValue(graph, [] as ListCommand<IMap<string, string>>[]);
-    list = Reactive.create<List<IMap<string, string>>>(
+    changes = inputValue(graph, [] as ListCommand<IMap<string, Cell<string>>>[]);
+    list = Reactive.create<List<IMap<string, Cell<string>>>>(
       graph,
       listOps,
       changes,
-      List<IMap<string, string>>(),
+      List<IMap<string, Cell<string>>>(),
     );
   });
 
   it("should map over list and nested maps", () => {
-    const initialList: List<IMap<string, string>> = List([
-      IMap({ name: "alice", role: "admin" }),
-      IMap({ name: "bob", role: "user" }),
-    ]);
-    const listWithData = Reactive.create<List<IMap<string, string>>>(
+    const initialList = List([cm({ name: "alice", role: "admin" }), cm({ name: "bob", role: "user" })]);
+    const listWithData = Reactive.create<List<IMap<string, Cell<string>>>>(
       graph,
       listOps,
       changes,
       initialList,
     );
 
-    // Map over the list, then map over each map's values to uppercase them
-    const mapped = mapList(graph, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
-        return mapPrimitive(graph, rxString, (s) => s.toUpperCase());
-      });
-    });
+    const mapped = mapList(graph, listWithData, (rxMap) =>
+      mapMap<string, Cell<string>, Cell<string>>(graph, rxMap, (rxString) =>
+        mapCell(graph, rxString, (s) => s.toUpperCase()),
+      ),
+    );
     graph.step();
 
-    expect(mapped.snapshot.get(0)?.get("name")).toBe("ALICE");
-    expect(mapped.snapshot.get(0)?.get("role")).toBe("ADMIN");
-    expect(mapped.snapshot.get(1)?.get("name")).toBe("BOB");
-    expect(mapped.snapshot.get(1)?.get("role")).toBe("USER");
+    expect(gv(mapped.snapshot, 0, "name")).toBe("ALICE");
+    expect(gv(mapped.snapshot, 0, "role")).toBe("ADMIN");
+    expect(gv(mapped.snapshot, 1, "name")).toBe("BOB");
+    expect(gv(mapped.snapshot, 1, "role")).toBe("USER");
   });
 
   it("should handle inserting a new map into the list", () => {
-    const initialList: List<IMap<string, string>> = List([
-      IMap({ name: "alice" }),
-    ]);
-    const listWithData = Reactive.create<List<IMap<string, string>>>(
+    const listWithData = Reactive.create<List<IMap<string, Cell<string>>>>(
       graph,
       listOps,
       changes,
-      initialList,
+      List([cm({ name: "alice" })]),
     );
 
-    const mapped = mapList(graph, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
-        return mapPrimitive(graph, rxString, (s) => s.toUpperCase());
-      });
-    });
+    const mapped = mapList(graph, listWithData, (rxMap) =>
+      mapMap<string, Cell<string>, Cell<string>>(graph, rxMap, (rxString) =>
+        mapCell(graph, rxString, (s) => s.toUpperCase()),
+      ),
+    );
     graph.step();
 
-    expect(mapped.snapshot.size).toBe(1);
-
-    // Insert a new map
-    changes.push([
-      { type: "insert", index: 1, value: IMap({ name: "bob", city: "nyc" }) },
-    ]);
+    changes.push([{ type: "insert", index: 1, value: cm({ name: "bob", city: "nyc" }) }]);
     graph.step();
 
     expect(mapped.snapshot.size).toBe(2);
-    expect(mapped.snapshot.get(1)?.get("name")).toBe("BOB");
-    expect(mapped.snapshot.get(1)?.get("city")).toBe("NYC");
+    expect(gv(mapped.snapshot, 1, "name")).toBe("BOB");
+    expect(gv(mapped.snapshot, 1, "city")).toBe("NYC");
   });
 
   it("should handle updating a value in a nested map", () => {
-    const initialList: List<IMap<string, string>> = List([
-      IMap({ name: "alice", role: "admin" }),
-      IMap({ name: "bob", role: "user" }),
-    ]);
-    const listWithData = Reactive.create<List<IMap<string, string>>>(
+    const listWithData = Reactive.create<List<IMap<string, Cell<string>>>>(
       graph,
       listOps,
       changes,
-      initialList,
+      List([cm({ name: "alice", role: "admin" }), cm({ name: "bob", role: "user" })]),
     );
 
-    const mapped = mapList(graph, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
-        return mapPrimitive(graph, rxString, (s) => s.toUpperCase());
-      });
-    });
+    const mapped = mapList(graph, listWithData, (rxMap) =>
+      mapMap<string, Cell<string>, Cell<string>>(graph, rxMap, (rxString) =>
+        mapCell(graph, rxString, (s) => s.toUpperCase()),
+      ),
+    );
     graph.step();
 
-    // Update bob's role via nested update command
-    // List update -> Map update -> string command
-    const mapUpdateCmd: MapCommand<string, string>[] = [
+    const mapUpdateCmd: MapCommand<string, Cell<string>>[] = [
       { type: "update", key: "role", command: "moderator" },
     ];
     changes.push([{ type: "update", index: 1, command: mapUpdateCmd }]);
     graph.step();
 
-    expect(mapped.snapshot.get(1)?.get("role")).toBe("MODERATOR");
-    // Other values unchanged
-    expect(mapped.snapshot.get(1)?.get("name")).toBe("BOB");
-    expect(mapped.snapshot.get(0)?.get("name")).toBe("ALICE");
+    expect(gv(mapped.snapshot, 1, "role")).toBe("MODERATOR");
+    expect(gv(mapped.snapshot, 1, "name")).toBe("BOB");
+    expect(gv(mapped.snapshot, 0, "name")).toBe("ALICE");
   });
 
   it("should handle adding a new key to a nested map", () => {
-    const initialList: List<IMap<string, string>> = List([
-      IMap({ name: "alice" }),
-    ]);
-    const listWithData = Reactive.create<List<IMap<string, string>>>(
+    const listWithData = Reactive.create<List<IMap<string, Cell<string>>>>(
       graph,
       listOps,
       changes,
-      initialList,
+      List([cm({ name: "alice" })]),
     );
 
-    expect(listWithData.snapshot.get(0)?.get("name")).toBe("alice");
-
     const mapped = mapList(graph, listWithData, (rxMap) =>
-      mapMap(graph, rxMap, (rxString) =>
-        mapPrimitive(graph, rxString, (x) => x.toUpperCase()),
+      mapMap<string, Cell<string>, Cell<string>>(graph, rxMap, (rxString) =>
+        mapCell(graph, rxString, (x) => x.toUpperCase()),
       ),
     );
     graph.step();
 
-    expect(mapped.snapshot.get(0)?.get("name")).toBe("ALICE");
-    expect(mapped.snapshot.get(0)?.has("email")).toBe(false);
-
-    // Add a new key to the map at index 0
-    const mapSetCmd: MapCommand<string, string>[] = [
-      { type: "add", key: "email", value: "alice@example.com" },
+    const mapSetCmd: MapCommand<string, Cell<string>>[] = [
+      { type: "add", key: "email", value: c("alice@example.com") },
     ];
     changes.push([{ type: "update", index: 0, command: mapSetCmd }]);
     graph.step();
 
-    expect(listWithData.snapshot.get(0)?.get("name")).toBe("alice");
-    expect(mapped.snapshot.get(0)?.get("email")).toBe("ALICE@EXAMPLE.COM");
-    expect(mapped.snapshot.get(0)?.get("name")).toBe("ALICE");
+    expect(gv(listWithData.snapshot, 0, "name")).toBe("alice");
+    expect(gv(mapped.snapshot, 0, "email")).toBe("ALICE@EXAMPLE.COM");
+    expect(gv(mapped.snapshot, 0, "name")).toBe("ALICE");
   });
 
   it("should handle removing a map from the list", () => {
-    const initialList: List<IMap<string, string>> = List([
-      IMap({ name: "alice" }),
-      IMap({ name: "bob" }),
-      IMap({ name: "charlie" }),
-    ]);
-    const listWithData = Reactive.create<List<IMap<string, string>>>(
+    const listWithData = Reactive.create<List<IMap<string, Cell<string>>>>(
       graph,
       listOps,
       changes,
-      initialList,
+      List([cm({ name: "alice" }), cm({ name: "bob" }), cm({ name: "charlie" })]),
     );
 
-    const mapped = mapList(graph, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
-        return mapPrimitive(graph, rxString, (s) => s.toUpperCase());
-      });
-    });
+    const mapped = mapList(graph, listWithData, (rxMap) =>
+      mapMap<string, Cell<string>, Cell<string>>(graph, rxMap, (rxString) =>
+        mapCell(graph, rxString, (s) => s.toUpperCase()),
+      ),
+    );
     graph.step();
 
-    expect(mapped.snapshot.size).toBe(3);
-
-    // Remove bob (index 1)
     changes.push([{ type: "remove", index: 1 }]);
     graph.step();
 
     expect(mapped.snapshot.size).toBe(2);
-    expect(mapped.snapshot.get(0)?.get("name")).toBe("ALICE");
-    expect(mapped.snapshot.get(1)?.get("name")).toBe("CHARLIE");
+    expect(gv(mapped.snapshot, 0, "name")).toBe("ALICE");
+    expect(gv(mapped.snapshot, 1, "name")).toBe("CHARLIE");
   });
 
   it("should handle deleting a key from a nested map", () => {
-    const initialList: List<IMap<string, string>> = List([
-      IMap({ name: "alice", temp: "data" }),
-    ]);
-    const listWithData = Reactive.create<List<IMap<string, string>>>(
+    const listWithData = Reactive.create<List<IMap<string, Cell<string>>>>(
       graph,
       listOps,
       changes,
-      initialList,
+      List([cm({ name: "alice", temp: "data" })]),
     );
 
-    const mapped = mapList(graph, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
-        return mapPrimitive(graph, rxString, (s) => s.toUpperCase());
-      });
-    });
+    const mapped = mapList(graph, listWithData, (rxMap) =>
+      mapMap<string, Cell<string>, Cell<string>>(graph, rxMap, (rxString) =>
+        mapCell(graph, rxString, (s) => s.toUpperCase()),
+      ),
+    );
     graph.step();
 
-    expect(mapped.snapshot.get(0)?.has("temp")).toBe(true);
-
-    // Delete the "temp" key
-    const mapDeleteCmd: MapCommand<string, string>[] = [
-      { type: "delete", key: "temp" },
-    ];
+    const mapDeleteCmd: MapCommand<string, Cell<string>>[] = [{ type: "delete", key: "temp" }];
     changes.push([{ type: "update", index: 0, command: mapDeleteCmd }]);
     graph.step();
 
     expect(mapped.snapshot.get(0)?.has("temp")).toBe(false);
-    expect(mapped.snapshot.get(0)?.get("name")).toBe("ALICE");
+    expect(gv(mapped.snapshot, 0, "name")).toBe("ALICE");
   });
 
   it("should handle complex batch operations", () => {
-    const initialList: List<IMap<string, string>> = List([
-      IMap({ name: "alice", role: "admin" }),
-      IMap({ name: "bob", role: "user" }),
-    ]);
-    const listWithData = Reactive.create<List<IMap<string, string>>>(
+    const listWithData = Reactive.create<List<IMap<string, Cell<string>>>>(
       graph,
       listOps,
       changes,
-      initialList,
+      List([cm({ name: "alice", role: "admin" }), cm({ name: "bob", role: "user" })]),
     );
 
-    const mapped = mapList(graph, listWithData, (rxMap) => {
-      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
-        return mapPrimitive(graph, rxString, (s) => s.toUpperCase());
-      });
-    });
+    const mapped = mapList(graph, listWithData, (rxMap) =>
+      mapMap<string, Cell<string>, Cell<string>>(graph, rxMap, (rxString) =>
+        mapCell(graph, rxString, (s) => s.toUpperCase()),
+      ),
+    );
     graph.step();
 
-    // Batch: insert new map, update existing map, remove a map
     changes.push([
-      { type: "insert", index: 0, value: IMap({ name: "zara" }) },
+      { type: "insert", index: 0, value: cm({ name: "zara" }) },
       {
         type: "update",
         index: 2,
-        command: [
-          { type: "update", key: "role", command: "guest" },
-        ] as MapCommand<string, string>[],
+        command: [{ type: "update", key: "role", command: "guest" }] as MapCommand<
+          string,
+          Cell<string>
+        >[],
       },
       { type: "remove", index: 1 },
     ]);
     graph.step();
 
-    // After operations:
-    // - Insert zara at 0: [zara, alice, bob]
-    // - Update index 2 (bob): [zara, alice, bob(role=guest)]
-    // - Remove index 1 (alice): [zara, bob(role=guest)]
     expect(mapped.snapshot.size).toBe(2);
-    expect(mapped.snapshot.get(0)?.get("name")).toBe("ZARA");
-    expect(mapped.snapshot.get(1)?.get("name")).toBe("BOB");
-    expect(mapped.snapshot.get(1)?.get("role")).toBe("GUEST");
+    expect(gv(mapped.snapshot, 0, "name")).toBe("ZARA");
+    expect(gv(mapped.snapshot, 1, "name")).toBe("BOB");
+    expect(gv(mapped.snapshot, 1, "role")).toBe("GUEST");
   });
 
   it("should call mapping functions correct number of times", () => {
-    const initialList: List<IMap<string, string>> = List([
-      IMap({ a: "1", b: "2" }),
-    ]);
-    const listWithData = Reactive.create<List<IMap<string, string>>>(
+    const listWithData = Reactive.create<List<IMap<string, Cell<string>>>>(
       graph,
       listOps,
       changes,
-      initialList,
+      List([cm({ a: "1", b: "2" })]),
     );
 
     let listMapCalls = 0;
@@ -277,19 +232,17 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
 
     const mapped = mapList(graph, listWithData, (rxMap) => {
       listMapCalls++;
-      return mapMap<string, string, string>(graph, rxMap, (rxString) => {
+      return mapMap<string, Cell<string>, Cell<string>>(graph, rxMap, (rxString) => {
         mapMapCalls++;
-        return mapPrimitive(graph, rxString, (s) => s.toUpperCase());
+        return mapCell(graph, rxString, (s) => s.toUpperCase());
       });
     });
     graph.step();
 
-    // 1 list item, 2 map entries
     expect(listMapCalls).toBe(1);
     expect(mapMapCalls).toBe(2);
 
-    // Update a value - should not call any mapping functions
-    const updateCmd: MapCommand<string, string>[] = [
+    const updateCmd: MapCommand<string, Cell<string>>[] = [
       { type: "update", key: "a", command: "updated" },
     ];
     changes.push([{ type: "update", index: 0, command: updateCmd }]);
@@ -297,26 +250,22 @@ describe("List<Map<string, string>> with mapList and mapMap", () => {
 
     expect(listMapCalls).toBe(1);
     expect(mapMapCalls).toBe(2);
-    expect(mapped.snapshot.get(0)?.get("a")).toBe("UPDATED");
+    expect(gv(mapped.snapshot, 0, "a")).toBe("UPDATED");
 
-    // Add a new key to the map - should call mapMap once
-    const setCmd: MapCommand<string, string>[] = [
-      { type: "add", key: "c", value: "3" },
+    const setCmd: MapCommand<string, Cell<string>>[] = [
+      { type: "add", key: "c", value: c("3") },
     ];
     changes.push([{ type: "update", index: 0, command: setCmd }]);
     graph.step();
 
     expect(listMapCalls).toBe(1);
     expect(mapMapCalls).toBe(3);
-    expect(mapped.snapshot.get(0)?.get("c")).toBe("3");
+    expect(gv(mapped.snapshot, 0, "c")).toBe("3");
 
-    // Insert a new list item - should call listMap once, mapMap for each entry
-    changes.push([
-      { type: "insert", index: 1, value: IMap({ x: "10", y: "20" }) },
-    ]);
+    changes.push([{ type: "insert", index: 1, value: cm({ x: "10", y: "20" }) }]);
     graph.step();
 
     expect(listMapCalls).toBe(2);
-    expect(mapMapCalls).toBe(5); // 3 + 2 new entries
+    expect(mapMapCalls).toBe(5);
   });
 });

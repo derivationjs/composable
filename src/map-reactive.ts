@@ -1,11 +1,12 @@
 import { Map as IMap } from "immutable";
 import { Graph, ReactiveValue } from "derivation";
 import { Reactive } from "./reactive.js";
+import { Cell } from "./cell.js";
+import { CellOperations } from "./cell-operations.js";
 import { Operations, asBase, Changes } from "./operations.js";
 import { MapCommand, MapOperations } from "./map-operations.js";
 import { operationsProxy } from "./operations-proxy.js";
 import { groupBy } from "./group-by.js";
-import { PrimitiveOperations } from "./primitive-operations.js";
 import { sequenceMap } from "./sequence-map.js";
 
 function takeRightWhile<X>(
@@ -115,21 +116,21 @@ export function mapMap<K, X, Y>(
     return ry;
   };
 
-  let current = IMap<K, Reactive<Y>>();
+  let current = IMap<K, Cell<Reactive<Y>>>();
   for (const [key, value] of map.previousSnapshot.entries()) {
-    current = current.set(key, createReactive(key, value));
+    current = current.set(key, new Cell(createReactive(key, value)));
   }
 
-  const reactiveValueOps = new PrimitiveOperations<Reactive<Y>>();
-  const reactiveMapOps = new MapOperations<K, Reactive<Y>>(reactiveValueOps);
+  const reactiveValueOps = new CellOperations<Reactive<Y>>();
+  const reactiveMapOps = new MapOperations<K, Cell<Reactive<Y>>>(reactiveValueOps);
 
   const yMapChanges = cleared
     .zip(keyState, (wasCleared, keys) => [wasCleared, keys] as const)
     .map(([wasCleared, keys]) => {
-      let commands: MapCommand<K, Reactive<Y>>[] = [];
+      let commands: MapCommand<K, Cell<Reactive<Y>>>[] = [];
 
       if (wasCleared) {
-        current = IMap<K, Reactive<Y>>();
+        current = IMap<K, Cell<Reactive<Y>>>();
         commands = [{ type: "clear" }];
       }
 
@@ -141,20 +142,21 @@ export function mapMap<K, X, Y>(
           commands.push({ type: "delete", key });
         } else if (structural !== null && structural.type === "add") {
           const nextReactive = createReactive(key, structural.value);
-          current = current.set(key, nextReactive);
-          commands.push({ type: "add", key, value: nextReactive });
+          const wrapped = new Cell(nextReactive);
+          current = current.set(key, wrapped);
+          commands.push({ type: "add", key, value: wrapped });
         }
       }
 
       return commands.length === 0 ? null : commands;
     });
 
-  const mappedReactives = Reactive.create<IMap<K, Reactive<Y>>>(
+  const mappedReactiveCells = Reactive.create<IMap<K, Cell<Reactive<Y>>>>(
     graph,
     reactiveMapOps,
     yMapChanges,
     current,
   );
 
-  return sequenceMap(graph, mappedReactives);
+  return sequenceMap(graph, mappedReactiveCells);
 }
