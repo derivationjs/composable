@@ -297,4 +297,165 @@ describe("groupByList", () => {
     expect(groupVals(grouped.snapshot, "odd")).toEqual([5, 1, 3]);
     expect(groupVals(grouped.snapshot, "even")).toEqual([4, 2]);
   });
+
+  describe("incrementality", () => {
+    it("should emit targeted commands, not full replacement, when inserting an item", () => {
+      const initialList = List([c(1), c(2)]);
+      const listWithData = Reactive.create<List<Cell<number>>>(
+        graph,
+        new ListOperations(numberOps),
+        changes,
+        initialList,
+      );
+
+      const grouped = groupByList<Cell<number>, string>(graph, listWithData, (rx) =>
+        keyCell(graph, rx),
+      );
+      graph.step();
+
+      changes.push([{ type: "insert", index: 2, value: c(3) }]);
+      graph.step();
+
+      expect(groupVals(grouped.snapshot, "odd")).toEqual([1, 3]);
+      expect(groupVals(grouped.snapshot, "even")).toEqual([2]);
+      const cmds = grouped.changes.value as unknown[];
+      expect(cmds).not.toBeNull();
+      expect((cmds as { type: string }[]).some((c) => c.type === "clear")).toBe(false);
+    });
+
+    it("should emit targeted commands, not full replacement, when removing an item", () => {
+      const initialList = List([c(1), c(2), c(3)]);
+      const listWithData = Reactive.create<List<Cell<number>>>(
+        graph,
+        new ListOperations(numberOps),
+        changes,
+        initialList,
+      );
+
+      const grouped = groupByList<Cell<number>, string>(graph, listWithData, (rx) =>
+        keyCell(graph, rx),
+      );
+      graph.step();
+
+      changes.push([{ type: "remove", index: 0 }]);
+      graph.step();
+
+      expect(groupVals(grouped.snapshot, "odd")).toEqual([3]);
+      expect(groupVals(grouped.snapshot, "even")).toEqual([2]);
+      const cmds = grouped.changes.value as unknown[];
+      expect(cmds).not.toBeNull();
+      expect((cmds as { type: string }[]).some((c) => c.type === "clear")).toBe(false);
+    });
+
+    it("should emit targeted commands, not full replacement, when updating a value within the same group", () => {
+      const initialList = List([c(2), c(4)]);
+      const listWithData = Reactive.create<List<Cell<number>>>(
+        graph,
+        new ListOperations(numberOps),
+        changes,
+        initialList,
+      );
+
+      const grouped = groupByList<Cell<number>, string>(graph, listWithData, (rx) =>
+        keyCell(graph, rx),
+      );
+      graph.step();
+
+      changes.push([{ type: "update", index: 0, command: 6 }]);
+      graph.step();
+
+      expect(groupVals(grouped.snapshot, "even")).toEqual([6, 4]);
+      const cmds = grouped.changes.value as unknown[];
+      expect(cmds).not.toBeNull();
+      expect((cmds as { type: string }[]).some((c) => c.type === "clear")).toBe(false);
+    });
+
+    it("should emit targeted commands, not full replacement, when an item moves between groups", () => {
+      const initialList = List([c(2), c(4)]);
+      const listWithData = Reactive.create<List<Cell<number>>>(
+        graph,
+        new ListOperations(numberOps),
+        changes,
+        initialList,
+      );
+
+      const grouped = groupByList<Cell<number>, string>(graph, listWithData, (rx) =>
+        keyCell(graph, rx),
+      );
+      graph.step();
+
+      changes.push([{ type: "update", index: 0, command: 3 }]);
+      graph.step();
+
+      expect(groupVals(grouped.snapshot, "even")).toEqual([4]);
+      expect(groupVals(grouped.snapshot, "odd")).toEqual([3]);
+      const cmds = grouped.changes.value as unknown[];
+      expect(cmds).not.toBeNull();
+      expect((cmds as { type: string }[]).some((c) => c.type === "clear")).toBe(false);
+    });
+  });
+
+  it("should handle transient inserts (insert + remove in same batch)", () => {
+    const initialList = List([c(1), c(2)]);
+    const listWithData = Reactive.create<List<Cell<number>>>(
+      graph,
+      new ListOperations(numberOps),
+      changes,
+      initialList,
+    );
+
+    const grouped = groupByList<Cell<number>, string>(graph, listWithData, (rx) =>
+      keyCell(graph, rx),
+    );
+    graph.step();
+
+    expect(groupVals(grouped.snapshot, "odd")).toEqual([1]);
+    expect(groupVals(grouped.snapshot, "even")).toEqual([2]);
+
+    changes.push([
+      { type: "insert", index: 0, value: c(5) },
+      { type: "remove", index: 0 },
+    ]);
+    graph.step();
+
+    expect(groupVals(grouped.snapshot, "odd")).toEqual([1]);
+    expect(groupVals(grouped.snapshot, "even")).toEqual([2]);
+  });
+
+  it("should handle key changes not driven by value updates", () => {
+    const initialList = List([c(1), c(2)]);
+    const listWithData = Reactive.create<List<Cell<number>>>(
+      graph,
+      new ListOperations(numberOps),
+      changes,
+      initialList,
+    );
+
+    const keyOverride = inputValue(graph, "" as string);
+
+    const grouped = groupByList<Cell<number>, string>(graph, listWithData, (rx) => {
+      const baseKey = mapCell(graph, rx, (n) => (n % 2 === 0 ? "even" : "odd"));
+      return Reactive.create<Cell<string>>(
+        graph,
+        new CellOperations<string>(),
+        baseKey.changes.zip(keyOverride, (valKey, override): string | null => {
+          if (override !== "") return override;
+          return valKey;
+        }),
+        baseKey.previousSnapshot,
+      );
+    });
+    graph.step();
+
+    expect(groupVals(grouped.snapshot, "odd")).toEqual([1]);
+    expect(groupVals(grouped.snapshot, "even")).toEqual([2]);
+
+    // Change all keys externally, without changing values
+    keyOverride.push("all");
+    graph.step();
+
+    expect(hasGroup(grouped.snapshot, "odd")).toBe(false);
+    expect(hasGroup(grouped.snapshot, "even")).toBe(false);
+    expect(groupVals(grouped.snapshot, "all")).toEqual([1, 2]);
+  });
 });

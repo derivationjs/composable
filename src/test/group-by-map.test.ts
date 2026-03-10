@@ -284,4 +284,170 @@ describe("groupByMap", () => {
     expect(hasGroup(grouped.snapshot, "even")).toBe(false);
     expect(getGroup(grouped.snapshot, "odd")!.get("a")?.value).toBe(3);
   });
+
+  describe("incrementality", () => {
+    it("should emit targeted add, not full replacement, when adding a new entry", () => {
+      const initial = IMap({ a: c(1) });
+      const src = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        initial,
+      );
+
+      const grouped = groupByMap(graph, src, makeKeyFn(graph));
+      graph.step();
+
+      changes.push([{ type: "add", key: "b", value: c(2) }]);
+      graph.step();
+
+      expect(getGroup(grouped.snapshot, "even")!.get("b")?.value).toBe(2);
+      const cmds = grouped.changes.value as MapCommand<
+        string,
+        IMap<string, Cell<number>>
+      >[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+    });
+
+    it("should emit targeted delete, not full replacement, when removing an entry", () => {
+      const initial = IMap({ a: c(1), b: c(2) });
+      const src = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        initial,
+      );
+
+      const grouped = groupByMap(graph, src, makeKeyFn(graph));
+      graph.step();
+
+      changes.push([{ type: "delete", key: "a" }]);
+      graph.step();
+
+      expect(hasGroup(grouped.snapshot, "odd")).toBe(false);
+      const cmds = grouped.changes.value as MapCommand<
+        string,
+        IMap<string, Cell<number>>
+      >[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+    });
+
+    it("should emit targeted update, not full replacement, when updating a value within the same group", () => {
+      const initial = IMap({ a: c(2), b: c(4) });
+      const src = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        initial,
+      );
+
+      const grouped = groupByMap(graph, src, makeKeyFn(graph));
+      graph.step();
+
+      changes.push([{ type: "update", key: "a", command: 6 }]);
+      graph.step();
+
+      expect(getGroup(grouped.snapshot, "even")!.get("a")?.value).toBe(6);
+      const cmds = grouped.changes.value as MapCommand<
+        string,
+        IMap<string, Cell<number>>
+      >[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+    });
+
+    it("should emit targeted commands, not full replacement, when an item moves between groups", () => {
+      const initial = IMap({ a: c(2), b: c(4) });
+      const src = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        initial,
+      );
+
+      const grouped = groupByMap(graph, src, makeKeyFn(graph));
+      graph.step();
+
+      changes.push([{ type: "update", key: "a", command: 3 }]);
+      graph.step();
+
+      expect(getGroup(grouped.snapshot, "odd")!.get("a")?.value).toBe(3);
+      expect(getGroup(grouped.snapshot, "even")!.get("b")?.value).toBe(4);
+      const cmds = grouped.changes.value as MapCommand<
+        string,
+        IMap<string, Cell<number>>
+      >[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+    });
+  });
+
+  it("should handle transient inserts (add + delete in same batch)", () => {
+    const initial = IMap({ a: c(1) });
+    const src = Reactive.create<IMap<string, Cell<number>>>(
+      graph,
+      new MapOperations<string, Cell<number>>(numberOps),
+      changes,
+      initial,
+    );
+
+    const grouped = groupByMap(graph, src, makeKeyFn(graph));
+    graph.step();
+
+    expect(getGroup(grouped.snapshot, "odd")!.get("a")?.value).toBe(1);
+
+    changes.push([
+      { type: "add", key: "b", value: c(2) },
+      { type: "delete", key: "b" },
+    ]);
+    graph.step();
+
+    expect(getGroup(grouped.snapshot, "odd")!.get("a")?.value).toBe(1);
+    expect(hasGroup(grouped.snapshot, "even")).toBe(false);
+  });
+
+  it("should handle key changes not driven by value updates", () => {
+    const initial = IMap({ a: c(1), b: c(2) });
+    const src = Reactive.create<IMap<string, Cell<number>>>(
+      graph,
+      new MapOperations<string, Cell<number>>(numberOps),
+      changes,
+      initial,
+    );
+
+    const keyOverride = inputValue(graph, "" as string);
+
+    const grouped = groupByMap<string, Cell<number>, string>(graph, src, (rx) => {
+      const baseKey = Reactive.create<Cell<string>>(
+        graph,
+        stringOps,
+        rx.changes.map((cmd) => (cmd === null ? null : cmd % 2 === 0 ? "even" : "odd")),
+        new Cell(rx.previousSnapshot.value % 2 === 0 ? "even" : "odd"),
+      );
+      return Reactive.create<Cell<string>>(
+        graph,
+        stringOps,
+        baseKey.changes.zip(keyOverride, (valKey, override): string | null => {
+          if (override !== "") return override;
+          return valKey;
+        }),
+        baseKey.previousSnapshot,
+      );
+    });
+    graph.step();
+
+    expect(getGroup(grouped.snapshot, "odd")!.get("a")?.value).toBe(1);
+    expect(getGroup(grouped.snapshot, "even")!.get("b")?.value).toBe(2);
+
+    // Change all keys externally, without changing values
+    keyOverride.push("all");
+    graph.step();
+
+    expect(hasGroup(grouped.snapshot, "odd")).toBe(false);
+    expect(hasGroup(grouped.snapshot, "even")).toBe(false);
+    expect(getGroup(grouped.snapshot, "all")!.get("a")?.value).toBe(1);
+    expect(getGroup(grouped.snapshot, "all")!.get("b")?.value).toBe(2);
+  });
 });
