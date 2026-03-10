@@ -4,6 +4,7 @@ import { Reactive } from "./reactive.js";
 import { decomposeList } from "./decompose-list.js";
 import { composeList } from "./compose-list.js";
 import { mapMap } from "./map-reactive.js";
+import { sortMap } from "./sort-map.js";
 
 /**
  * Converts a List of reactive values into a reactive List.
@@ -31,4 +32,13 @@ export function mapList<X, Y>(
   const [structure, map] = decomposeList(graph, list);
   const mappedMap = mapMap(graph, map, f);
   return composeList(graph, structure, mappedMap);
+}
+
+export function sortList<X>(
+  graph: Graph,
+  list: Reactive<List<X>>,
+  compare: (left: X, right: X) => number,
+): Reactive<List<X>> {
+  const [, map] = decomposeList(graph, list);
+  return sortMap(graph, map, ([, left], [, right]) => compare(left, right));
 }

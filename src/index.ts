@@ -31,12 +31,15 @@ export {
 } from "./log-reactive.js";
 
 // List reactive operations
-export { sequenceList, mapList } from "./list-reactive.js";
+export { sequenceList, mapList, sortList } from "./list-reactive.js";
 export { indexList } from "./index-list.js";
 export { deindexList } from "./deindex-list.js";
 
 // Map reactive operations
 export { mapMap } from "./map-reactive.js";
+export { filterMap } from "./filter-map.js";
+export { mergeMap } from "./merge-map.js";
+export { sortMap, type MapEntryComparator } from "./sort-map.js";
 export { singletonMap, reactiveSingletonMap } from "./singleton-map.js";
 
 export { constantCell } from "./constant-cell.js";

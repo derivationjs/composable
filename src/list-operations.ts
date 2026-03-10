@@ -30,16 +30,16 @@ export class ListOperations<T>
         case "insert":
           return s.insert(cmd.index, cmd.value);
         case "update": {
-          const item = s.get(cmd.index);
-          if (item === undefined) return s;
+          if (!s.has(cmd.index)) return s;
+          const item = s.get(cmd.index) as T;
           const newItem = asBase(this.itemOps).apply(item, cmd.command);
           return s.set(cmd.index, newItem);
         }
         case "remove":
           return s.remove(cmd.index);
         case "move": {
-          const item = s.get(cmd.from);
-          if (item === undefined) return s;
+          if (!s.has(cmd.from)) return s;
+          const item = s.get(cmd.from) as T;
           return s.remove(cmd.from).insert(cmd.to, item);
         }
         case "clear":

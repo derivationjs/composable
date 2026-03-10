@@ -29,8 +29,8 @@ export class MapOperations<K, V>
         case "add":
           return s.set(cmd.key, cmd.value);
         case "update": {
-          const item = s.get(cmd.key);
-          if (item === undefined) return s;
+          if (!s.has(cmd.key)) return s;
+          const item = s.get(cmd.key) as V;
           const newItem = asBase(this.valueOps).apply(item, cmd.command);
           return s.set(cmd.key, newItem);
         }
