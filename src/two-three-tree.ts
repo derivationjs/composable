@@ -474,6 +474,23 @@ export class TwoThreeTree<K, V, S> {
     }
   }
 
+  get(id: K): V | undefined {
+    const leaf = this.index.get(id);
+    return leaf?.value;
+  }
+
+  update(id: K, newValue: V): void {
+    const leaf = this.index.get(id);
+    if (!leaf) return;
+    leaf.value = newValue;
+    this.propagateStatsUp(leaf.parent);
+  }
+
+  clear(): void {
+    this.root = null;
+    this.index.clear();
+  }
+
   remove(id: K): void {
     const leaf = this.index.get(id);
     if (!leaf) return;

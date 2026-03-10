@@ -282,4 +282,142 @@ describe("filterList", () => {
     expect(predicateCallCount).toBe(4); // No new calls
     expect(filtered.snapshot.toArray()).toEqual([]);
   });
+
+  describe("incrementality", () => {
+    it("should emit targeted insert, not full replacement, when adding a matching item", () => {
+      const initialList = numberCells(3, 7, 4, 9);
+      const listWithData = Reactive.create<List<Cell<number>>>(
+        graph,
+        new ListOperations(numberCellOps),
+        changes,
+        initialList,
+      );
+      const filtered = filterList(graph, listWithData, (rx) =>
+        greaterThan(graph, rx, 5),
+      );
+      graph.step();
+      expect(listNumbers(filtered.snapshot)).toEqual([7, 9]);
+
+      changes.push([{ type: "insert", index: 0, value: numberCell(8) }]);
+      graph.step();
+
+      expect(listNumbers(filtered.snapshot)).toEqual([8, 7, 9]);
+      const cmds = filtered.changes.value as ListCommand<Cell<number>>[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+    });
+
+    it("should emit targeted remove, not full replacement, when removing a matching item", () => {
+      const initialList = numberCells(3, 7, 4, 9);
+      const listWithData = Reactive.create<List<Cell<number>>>(
+        graph,
+        new ListOperations(numberCellOps),
+        changes,
+        initialList,
+      );
+      const filtered = filterList(graph, listWithData, (rx) =>
+        greaterThan(graph, rx, 5),
+      );
+      graph.step();
+      expect(listNumbers(filtered.snapshot)).toEqual([7, 9]);
+
+      changes.push([{ type: "remove", index: 1 }]); // Remove 7
+      graph.step();
+
+      expect(listNumbers(filtered.snapshot)).toEqual([9]);
+      const cmds = filtered.changes.value as ListCommand<Cell<number>>[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+    });
+
+    it("should emit null changes when inserting a non-matching item", () => {
+      const initialList = numberCells(3, 7, 4, 9);
+      const listWithData = Reactive.create<List<Cell<number>>>(
+        graph,
+        new ListOperations(numberCellOps),
+        changes,
+        initialList,
+      );
+      const filtered = filterList(graph, listWithData, (rx) =>
+        greaterThan(graph, rx, 5),
+      );
+      graph.step();
+      expect(listNumbers(filtered.snapshot)).toEqual([7, 9]);
+
+      changes.push([{ type: "insert", index: 0, value: numberCell(2) }]);
+      graph.step();
+
+      expect(listNumbers(filtered.snapshot)).toEqual([7, 9]);
+      // No structural change to the filtered list, so changes should be null or empty
+      const cmds = filtered.changes.value as ListCommand<Cell<number>>[] | null;
+      expect(cmds === null || cmds.length === 0).toBe(true);
+    });
+
+    it("should not emit clear when the filtered list is already empty", () => {
+      const initialList = numberCells(1, 2, 3);
+      const listWithData = Reactive.create<List<Cell<number>>>(
+        graph,
+        new ListOperations(numberCellOps),
+        changes,
+        initialList,
+      );
+      const filtered = filterList(graph, listWithData, (rx) =>
+        greaterThan(graph, rx, 5),
+      );
+      graph.step();
+      expect(filtered.snapshot.toArray()).toEqual([]);
+
+      changes.push([{ type: "clear" }]);
+      graph.step();
+
+      expect(filtered.snapshot.toArray()).toEqual([]);
+      const cmds = filtered.changes.value as ListCommand<Cell<number>>[] | null;
+      expect(cmds === null || cmds.length === 0).toBe(true);
+    });
+
+    it("should not emit a move when the filtered index does not change", () => {
+      // Source: 3(F), 7(T), 2(F), 9(T) — move non-selected item between two selected ones
+      const initialList = numberCells(3, 7, 2, 9);
+      const listWithData = Reactive.create<List<Cell<number>>>(
+        graph,
+        new ListOperations(numberCellOps),
+        changes,
+        initialList,
+      );
+      const filtered = filterList(graph, listWithData, (rx) =>
+        greaterThan(graph, rx, 5),
+      );
+      graph.step();
+      expect(listNumbers(filtered.snapshot)).toEqual([7, 9]);
+
+      // Move 7 past the non-selected 2: source [3, 2, 9, 7] but filtered stays [7, 9]
+      // Wait — 7 moves past 9, filtered becomes [9, 7], that's a real move.
+      // Instead: move 9(index 3) to index 2 → source [3, 7, 9, 2]. Filtered [7, 9] unchanged.
+      changes.push([{ type: "move", from: 3, to: 2 }]);
+      graph.step();
+
+      expect(listNumbers(filtered.snapshot)).toEqual([7, 9]);
+      const cmds = filtered.changes.value as ListCommand<Cell<number>>[] | null;
+      expect(cmds === null || cmds.length === 0).toBe(true);
+    });
+
+    it("should emit targeted commands when predicate flips false->true", () => {
+      const filtered = filterList(graph, list, (rx) =>
+        greaterThan(graph, rx, 5),
+      );
+      graph.step();
+
+      changes.push([{ type: "insert", index: 0, value: numberCell(3) }]);
+      graph.step();
+      expect(filtered.snapshot.toArray()).toEqual([]);
+
+      changes.push([{ type: "update", index: 0, command: 10 }]);
+      graph.step();
+
+      expect(listNumbers(filtered.snapshot)).toEqual([10]);
+      const cmds = filtered.changes.value as ListCommand<Cell<number>>[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+    });
+  });
 });
