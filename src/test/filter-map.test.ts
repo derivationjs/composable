@@ -155,4 +155,239 @@ describe("filterMap", () => {
 
     expect(filtered.snapshot.size).toBe(0);
   });
+
+  it("should handle delete of non-matching entry", () => {
+    const sourceWithData = Reactive.create<IMap<string, Cell<number>>>(
+      graph,
+      new MapOperations<string, Cell<number>>(numberOps),
+      changes,
+      cm({ a: 1, b: 2 }),
+    );
+
+    const filtered = filterMap(graph, sourceWithData, predicate);
+    graph.step();
+
+    expect(unwrapMap(filtered.snapshot)).toEqual({ b: 2 });
+
+    changes.push([{ type: "delete", key: "a" }]);
+    graph.step();
+
+    expect(unwrapMap(filtered.snapshot)).toEqual({ b: 2 });
+    expect(filtered.changes.value).toBeNull();
+  });
+
+  describe("incrementality", () => {
+    it("should emit targeted add, not full replacement, when adding a matching entry", () => {
+      const sourceWithData = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        cm({ a: 2 }),
+      );
+
+      const filtered = filterMap(graph, sourceWithData, predicate);
+      graph.step();
+
+      changes.push([{ type: "add", key: "b", value: c(4) }]);
+      graph.step();
+
+      expect(unwrapMap(filtered.snapshot)).toEqual({ a: 2, b: 4 });
+      const cmds = filtered.changes.value as MapCommand<string, Cell<number>>[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+    });
+
+    it("should emit null changes when adding a non-matching entry", () => {
+      const sourceWithData = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        cm({ a: 2 }),
+      );
+
+      const filtered = filterMap(graph, sourceWithData, predicate);
+      graph.step();
+
+      changes.push([{ type: "add", key: "b", value: c(3) }]);
+      graph.step();
+
+      expect(unwrapMap(filtered.snapshot)).toEqual({ a: 2 });
+      expect(filtered.changes.value).toBeNull();
+    });
+
+    it("should emit targeted delete, not full replacement, when deleting a matching entry", () => {
+      const sourceWithData = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        cm({ a: 2, b: 4 }),
+      );
+
+      const filtered = filterMap(graph, sourceWithData, predicate);
+      graph.step();
+
+      changes.push([{ type: "delete", key: "a" }]);
+      graph.step();
+
+      expect(unwrapMap(filtered.snapshot)).toEqual({ b: 4 });
+      const cmds = filtered.changes.value as MapCommand<string, Cell<number>>[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+    });
+
+    it("should emit null changes when deleting a non-matching entry", () => {
+      const sourceWithData = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        cm({ a: 1, b: 4 }),
+      );
+
+      const filtered = filterMap(graph, sourceWithData, predicate);
+      graph.step();
+
+      changes.push([{ type: "delete", key: "a" }]);
+      graph.step();
+
+      expect(unwrapMap(filtered.snapshot)).toEqual({ b: 4 });
+      expect(filtered.changes.value).toBeNull();
+    });
+
+    it("should emit targeted update when a matching entry stays matching", () => {
+      const sourceWithData = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        cm({ a: 2, b: 4 }),
+      );
+
+      const filtered = filterMap(graph, sourceWithData, predicate);
+      graph.step();
+
+      changes.push([{ type: "update", key: "a", command: 6 }]);
+      graph.step();
+
+      expect(unwrapMap(filtered.snapshot)).toEqual({ a: 6, b: 4 });
+      const cmds = filtered.changes.value as MapCommand<string, Cell<number>>[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+      expect(cmds).toEqual([{ type: "update", key: "a", command: 6 }]);
+    });
+
+    it("should emit targeted delete when update makes entry stop matching", () => {
+      const sourceWithData = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        cm({ a: 2, b: 4 }),
+      );
+
+      const filtered = filterMap(graph, sourceWithData, predicate);
+      graph.step();
+
+      changes.push([{ type: "update", key: "a", command: 3 }]);
+      graph.step();
+
+      expect(unwrapMap(filtered.snapshot)).toEqual({ b: 4 });
+      const cmds = filtered.changes.value as MapCommand<string, Cell<number>>[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+      expect(cmds).toEqual([{ type: "delete", key: "a" }]);
+    });
+
+    it("should emit targeted add when update makes entry start matching", () => {
+      const sourceWithData = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        cm({ a: 1, b: 4 }),
+      );
+
+      const filtered = filterMap(graph, sourceWithData, predicate);
+      graph.step();
+
+      changes.push([{ type: "update", key: "a", command: 2 }]);
+      graph.step();
+
+      expect(unwrapMap(filtered.snapshot)).toEqual({ a: 2, b: 4 });
+      const cmds = filtered.changes.value as MapCommand<string, Cell<number>>[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+      expect(cmds).toEqual([{ type: "add", key: "a", value: c(2) }]);
+    });
+
+    it("should emit null changes when update on non-matching entry keeps it non-matching", () => {
+      const sourceWithData = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        cm({ a: 1, b: 4 }),
+      );
+
+      const filtered = filterMap(graph, sourceWithData, predicate);
+      graph.step();
+
+      changes.push([{ type: "update", key: "a", command: 3 }]);
+      graph.step();
+
+      expect(unwrapMap(filtered.snapshot)).toEqual({ b: 4 });
+      expect(filtered.changes.value).toBeNull();
+    });
+
+    it("should emit targeted commands when selection changes without source update", () => {
+      const selectionOverride = inputValue(graph, null as boolean | null);
+
+      const sourceWithData = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        cm({ a: 1, b: 2 }),
+      );
+
+      const filtered = filterMap(graph, sourceWithData, (rx) => {
+        const base = mapCell(graph, rx, (value) => value % 2 === 0);
+        return Reactive.create<Cell<boolean>>(
+          graph,
+          new CellOperations<boolean>(),
+          base.changes.zip(selectionOverride, (baseVal, override): boolean | null => {
+            if (override !== null) return override;
+            return baseVal;
+          }),
+          base.previousSnapshot,
+        );
+      });
+      graph.step();
+
+      expect(unwrapMap(filtered.snapshot)).toEqual({ b: 2 });
+
+      // Override: select everything
+      selectionOverride.push(true);
+      graph.step();
+
+      expect(unwrapMap(filtered.snapshot)).toEqual({ a: 1, b: 2 });
+      const cmds = filtered.changes.value as MapCommand<string, Cell<number>>[];
+      expect(cmds).not.toBeNull();
+      expect(cmds.some((c) => c.type === "clear")).toBe(false);
+    });
+
+    it("should not emit clear when clearing an already empty filtered map", () => {
+      const sourceWithData = Reactive.create<IMap<string, Cell<number>>>(
+        graph,
+        new MapOperations<string, Cell<number>>(numberOps),
+        changes,
+        cm({ a: 1, b: 3 }),
+      );
+
+      const filtered = filterMap(graph, sourceWithData, predicate);
+      graph.step();
+
+      expect(filtered.snapshot.size).toBe(0);
+
+      changes.push([{ type: "clear" }]);
+      graph.step();
+
+      expect(filtered.snapshot.size).toBe(0);
+      expect(filtered.changes.value).toBeNull();
+    });
+  });
 });
