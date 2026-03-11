@@ -22,9 +22,7 @@ describe("indexList", () => {
     );
 
     const indexed = indexList(graph, source, {
-      compareIds: (a, b) => (a < b ? -1 : a > b ? 1 : 0),
-      firstId: 0n,
-      nextId: (id) => id + 1n,
+      compareIds: (a: bigint, b: bigint) => (a < b ? -1 : a > b ? 1 : 0),
       xToNodeId: (x) => BigInt(x.value),
     });
     graph.step();
@@ -52,9 +50,7 @@ describe("indexList", () => {
     );
 
     const indexed = indexList(graph, source, {
-      compareIds: (a, b) => a.localeCompare(b),
-      firstId: "id-0",
-      nextId: (id) => `${id}!`,
+      compareIds: (a: string, b: string) => a.localeCompare(b),
       xToNodeId: (x) => `id-${x.value}`,
     });
     graph.step();
@@ -74,9 +70,7 @@ describe("indexList", () => {
     );
 
     const indexed = indexList(graph, source, {
-      compareIds: (a, b) => (a < b ? -1 : a > b ? 1 : 0),
-      firstId: 0n,
-      nextId: (id) => id + 1n,
+      compareIds: (a: bigint, b: bigint) => (a < b ? -1 : a > b ? 1 : 0),
       xToNodeId: (x) => BigInt(x.value),
     });
     const deindexed = deindexList(graph, indexed);

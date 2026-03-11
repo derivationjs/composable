@@ -7,8 +7,6 @@ import { type Operable } from "./operations.js";
 
 export type IndexListOptions<NodeId, T> = {
   compareIds: (a: NodeId, b: NodeId) => number;
-  firstId: NodeId;
-  nextId: (id: NodeId) => NodeId;
   xToNodeId: (value: T) => NodeId;
 };
 
@@ -20,8 +18,6 @@ export function indexList<NodeId, T extends Operable>(
   const initial = IndexedList.create<NodeId, T>({
     initialValues: source.previousSnapshot.toArray(),
     compareIds: options.compareIds,
-    firstId: options.firstId,
-    nextId: options.nextId,
     xToNodeId: options.xToNodeId,
   });
 

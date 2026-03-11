@@ -3,7 +3,7 @@
   "author": "Daniel Waterworth",
   "license": "MIT",
   "description": "Experimental library for expressive, react data flows.",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -28,8 +28,8 @@
     "dist"
   ],
   "dependencies": {
-    "@derivation/indexed-list": "^0.7.0",
-    "derivation": "^0.7.0",
+    "@derivation/indexed-list": "^0.8.0",
+    "derivation": "^0.8.0",
     "immutable": "^5.1.5"
   },
   "devDependencies": {
