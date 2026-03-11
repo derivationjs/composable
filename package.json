@@ -30,7 +30,7 @@
   "dependencies": {
     "@derivation/indexed-list": "^0.7.0",
     "derivation": "^0.7.0",
-    "immutable": "^5.1.4"
+    "immutable": "^5.1.5"
   },
   "devDependencies": {
     "@types/node": "^25",
