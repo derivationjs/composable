@@ -241,7 +241,7 @@ describe("sort", () => {
     expect(values(sorted.snapshot)).toEqual([]);
   });
 
-  it("initializes from the current source state when created after prior source updates", () => {
+  it("builds initial state from the previous snapshot", () => {
     changes.push([
       { type: "add", key: "b", value: c(2) },
       { type: "add", key: "a", value: c(1) },
@@ -250,10 +250,9 @@ describe("sort", () => {
 
     const sorted = sortMap(graph, map, byValue);
 
-    expect(values(sorted.snapshot)).toEqual([1, 2]);
-
-    graph.step();
-
+    // Initial state reflects source's previous snapshot (empty),
+    // not the current snapshot
+    expect(values(sorted.previousSnapshot)).toEqual([]);
     expect(values(sorted.snapshot)).toEqual([1, 2]);
   });
 

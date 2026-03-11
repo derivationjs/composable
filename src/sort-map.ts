@@ -1,111 +1,87 @@
-import { List, Map as IMap, is } from "immutable";
+import { List, Map as IMap } from "immutable";
 import { Graph } from "derivation";
 import { Reactive } from "./reactive.js";
 import { ListCommand, ListOperations } from "./list-operations.js";
 import { MapCommand } from "./map-operations.js";
 import { asBase } from "./operations.js";
+import { TwoThreeTree, Monoid } from "./two-three-tree.js";
 
 export type MapEntryComparator<K, V> = (left: [K, V], right: [K, V]) => number;
 
-type SortState<K, V> = {
-  map: IMap<K, V>;
-  sortedKeys: K[];
-  sequenceNumbers: IMap<K, number>;
-  nextSequenceNumber: number;
-};
+type SortSummary<K> = { count: number; lastKey: K | null };
 
-function findSortedKeyIndex<K>(sortedKeys: K[], key: K): number {
-  return sortedKeys.findIndex((existingKey) => is(existingKey, key));
+function sortMonoid<K>(): Monoid<SortSummary<K>> {
+  return {
+    empty: { count: 0, lastKey: null },
+    combine: (a, b) => ({
+      count: a.count + b.count,
+      lastKey: b.count > 0 ? b.lastKey : a.lastKey,
+    }),
+  };
 }
 
-function compareEntries<K, V>(
-  leftKey: K,
-  leftValue: V,
-  rightKey: K,
-  rightValue: V,
+function sortMeasure<K>(mapKey: K): SortSummary<K> {
+  return { count: 1, lastKey: mapKey };
+}
+
+type SortState<K, V> = {
+  map: IMap<K, V>;
+  tree: TwoThreeTree<object, K, SortSummary<K>>;
+  ids: IMap<K, object>;
+};
+
+function makeInsertThreshold<K, V>(
+  state: SortState<K, V>,
   compare: MapEntryComparator<K, V>,
-  sequenceNumbers: IMap<K, number>,
+  key: K,
+  value: V,
+): (acc: SortSummary<K>) => boolean {
+  return (acc) => {
+    if (acc.count === 0) return false;
+    const accValue = state.map.get(acc.lastKey!) as V;
+    return compare([key, value], [acc.lastKey!, accValue]) < 0;
+  };
+}
+
+function treeIndexOf<K>(
+  tree: TwoThreeTree<object, K, SortSummary<K>>,
+  id: object,
 ): number {
-  const ranked = compare([leftKey, leftValue], [rightKey, rightValue]);
-  if (ranked !== 0) return ranked;
-  return (sequenceNumbers.get(leftKey) ?? 0) - (sequenceNumbers.get(rightKey) ?? 0);
+  return tree.getPrefixSummaryById(id)!.count;
 }
 
 function buildInitialState<K, V>(
   source: IMap<K, V>,
   compare: MapEntryComparator<K, V>,
 ): SortState<K, V> {
-  const entries = [...source.entries()];
-  let sequenceNumbers = IMap<K, number>();
-
-  entries.forEach(([key], index) => {
-    sequenceNumbers = sequenceNumbers.set(key, index);
-  });
-
-  const sortedKeys = entries
-    .slice()
-    .sort(([leftKey, leftValue], [rightKey, rightValue]) =>
-      compareEntries(
-        leftKey,
-        leftValue,
-        rightKey,
-        rightValue,
-        compare,
-        sequenceNumbers,
-      ),
-    )
-    .map(([key]) => key);
-
-  return {
+  const tree = new TwoThreeTree<object, K, SortSummary<K>>(
+    sortMonoid<K>(),
+    sortMeasure,
+  );
+  const state: SortState<K, V> = {
     map: source,
-    sortedKeys,
-    sequenceNumbers,
-    nextSequenceNumber: entries.length,
+    tree,
+    ids: IMap<K, object>(),
   };
+
+  for (const [key, value] of source.entries()) {
+    const id = {};
+    state.ids = state.ids.set(key, id);
+    tree.insert(id, key, makeInsertThreshold(state, compare, key, value));
+  }
+
+  return state;
 }
 
 function stateToList<K, V>(state: SortState<K, V>): List<V> {
-  return List(
-    state.sortedKeys.map((key) => {
-      const value = state.map.get(key);
-      return value === undefined && !state.map.has(key) ? (undefined as V) : (value as V);
-    }),
-  );
-}
-
-function hasSameObservableEntries<V>(left: List<V>, right: List<V>): boolean {
-  if (left.size !== right.size) return false;
-  for (let index = 0; index < left.size; index++) {
-    if (left.get(index) !== right.get(index)) return false;
+  const values: V[] = [];
+  for (const { value: mapKey } of state.tree) {
+    const v = state.map.get(mapKey);
+    values.push(
+      v === undefined && !state.map.has(mapKey) ? (undefined as V) : (v as V),
+    );
   }
-  return true;
-}
-
-function findInsertIndex<K, V>(
-  state: SortState<K, V>,
-  key: K,
-  value: V,
-  compare: MapEntryComparator<K, V>,
-): number {
-  for (let index = 0; index < state.sortedKeys.length; index++) {
-    const existingKey = state.sortedKeys[index];
-    const existingValue = state.map.get(existingKey);
-    if (existingValue === undefined && !state.map.has(existingKey)) continue;
-    const rankedValue = existingValue as V;
-    if (
-      compareEntries(
-        key,
-        value,
-        existingKey,
-        rankedValue,
-        compare,
-        state.sequenceNumbers,
-      ) < 0
-    ) {
-      return index;
-    }
-  }
-  return state.sortedKeys.length;
+  return List(values);
 }
 
 export function sortMap<K, V>(
@@ -116,18 +92,10 @@ export function sortMap<K, V>(
   const valueOps = source.operations.valueOperations;
   const baseValueOps = asBase(valueOps);
   const listOps = new ListOperations(valueOps);
-  let state = buildInitialState(source.snapshot, compare);
+  let state = buildInitialState(source.previousSnapshot, compare);
   const initial = stateToList(state);
-  let current = initial;
-  let pendingInitialCommands = source.changes.value;
 
   const changes = source.changes.map((rawCommands) => {
-    if (rawCommands === pendingInitialCommands) {
-      pendingInitialCommands = null;
-      return null;
-    }
-    pendingInitialCommands = null;
-
     const commands = (rawCommands ?? []) as MapCommand<K, V>[];
     if (commands.length === 0) {
       return null;
@@ -138,28 +106,28 @@ export function sortMap<K, V>(
     for (const command of commands) {
       switch (command.type) {
         case "add": {
-          const nextSequenceNumber = state.nextSequenceNumber;
-          state.sequenceNumbers = state.sequenceNumbers.set(
-            command.key,
-            nextSequenceNumber,
-          );
-          state.nextSequenceNumber = nextSequenceNumber + 1;
+          const id = {};
+          state.ids = state.ids.set(command.key, id);
           state.map = state.map.set(command.key, command.value);
-          const index = findInsertIndex(state, command.key, command.value, compare);
-          state.sortedKeys.splice(index, 0, command.key);
+          state.tree.insert(
+            id,
+            command.key,
+            makeInsertThreshold(state, compare, command.key, command.value),
+          );
+          const index = treeIndexOf(state.tree, id);
           output.push({ type: "insert", index, value: command.value });
           break;
         }
         case "delete": {
-          const index = findSortedKeyIndex(state.sortedKeys, command.key);
-          if (index === -1) {
+          const id = state.ids.get(command.key);
+          if (id === undefined) {
             state.map = state.map.delete(command.key);
-            state.sequenceNumbers = state.sequenceNumbers.delete(command.key);
             break;
           }
-          state.sortedKeys.splice(index, 1);
+          const index = treeIndexOf(state.tree, id);
+          state.tree.remove(id);
           state.map = state.map.delete(command.key);
-          state.sequenceNumbers = state.sequenceNumbers.delete(command.key);
+          state.ids = state.ids.delete(command.key);
           output.push({ type: "remove", index });
           break;
         }
@@ -168,33 +136,41 @@ export function sortMap<K, V>(
 
           const currentValue = state.map.get(command.key) as V;
           const nextValue = baseValueOps.apply(currentValue, command.command);
-          const oldIndex = findSortedKeyIndex(state.sortedKeys, command.key);
-          if (oldIndex === -1) {
+
+          const id = state.ids.get(command.key);
+          if (id === undefined) {
             state.map = state.map.set(command.key, nextValue);
             break;
           }
 
+          const oldIndex = treeIndexOf(state.tree, id);
+
+          state.tree.remove(id);
           state.map = state.map.set(command.key, nextValue);
-          if (!is(currentValue, nextValue)) {
-            output.push({ type: "update", index: oldIndex, command: command.command });
+          if (currentValue !== nextValue) {
+            output.push({
+              type: "update",
+              index: oldIndex,
+              command: command.command,
+            });
           }
 
-          state.sortedKeys.splice(oldIndex, 1);
-          const newIndex = findInsertIndex(state, command.key, nextValue, compare);
-          state.sortedKeys.splice(newIndex, 0, command.key);
+          state.tree.insert(
+            id,
+            command.key,
+            makeInsertThreshold(state, compare, command.key, nextValue),
+          );
+          const newIndex = treeIndexOf(state.tree, id);
           if (oldIndex !== newIndex) {
             output.push({ type: "move", from: oldIndex, to: newIndex });
           }
           break;
         }
         case "clear": {
-          const hadEntries = state.sortedKeys.length > 0;
-          state = {
-            map: IMap<K, V>(),
-            sortedKeys: [],
-            sequenceNumbers: IMap<K, number>(),
-            nextSequenceNumber: state.nextSequenceNumber,
-          };
+          const hadEntries = state.tree.summary.count > 0;
+          state.tree.clear();
+          state.map = IMap<K, V>();
+          state.ids = IMap<K, object>();
           if (hadEntries) {
             output.push({ type: "clear" });
           }
@@ -203,15 +179,7 @@ export function sortMap<K, V>(
       }
     }
 
-    const previous = current;
-    const next = stateToList(state);
-    current = next;
-    if (output.length > 0) {
-      return output;
-    }
-    return hasSameObservableEntries(previous, next)
-      ? null
-      : listOps.replaceCommand(next);
+    return output.length > 0 ? output : null;
   });
 
   return Reactive.create<List<V>>(graph, listOps, changes, initial);
