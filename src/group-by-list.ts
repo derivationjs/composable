@@ -1,4 +1,5 @@
 import { List, Map as IMap, is } from "immutable";
+import { IndexedList } from "@derivation/indexed-list";
 import { Graph } from "derivation";
 import { Reactive } from "./reactive.js";
 import { Cell } from "./cell.js";
@@ -9,211 +10,18 @@ import { ListCommand, ListOperations } from "./list-operations.js";
 import { mapMap } from "./map-reactive.js";
 import { TwoThreeTree, Monoid } from "./two-three-tree.js";
 
-type GroupSummary<K> = { total: number; perKey: IMap<K, number> };
+type GroupInfo = { count: number; lastId: ID | null };
 
-function groupSummaryMonoid<K>(): Monoid<GroupSummary<K>> {
-  return {
-    empty: { total: 0, perKey: IMap() },
-    combine: (a, b) => ({
-      total: a.total + b.total,
-      perKey: a.perKey.mergeWith((va, vb) => va + vb, b.perKey),
-    }),
-  };
-}
+const groupInfoMonoid: Monoid<GroupInfo> = {
+  empty: { count: 0, lastId: null },
+  combine: (a, b) => ({
+    count: a.count + b.count,
+    lastId: b.lastId ?? a.lastId,
+  }),
+};
 
-type TreeEntry<K> = { key: K | null; cellId: Cell<ID> };
-
-function measureEntry<K>(v: TreeEntry<K>): GroupSummary<K> {
-  if (v.key === null) return { total: 1, perKey: IMap() };
-  return { total: 1, perKey: IMap([[v.key, 1]]) };
-}
-
-function groupIndex<K>(
-  tree: TwoThreeTree<ID, TreeEntry<K>, GroupSummary<K>>,
-  id: ID,
-  key: K,
-): number {
-  return tree.getPrefixSummaryById(id)!.perKey.get(key) ?? 0;
-}
-
-/**
- * Mutable tracker for group sizes.
- * Produces incremental outer map commands for add/delete/update of groups.
- */
-class ListGroupTracker<X, K extends NonNullable<unknown>> {
-  groupSizes = IMap<K, number>();
-
-  private incrementSize(key: K): void {
-    this.groupSizes = this.groupSizes.set(key, (this.groupSizes.get(key) ?? 0) + 1);
-  }
-
-  private decrementSize(key: K): void {
-    const size = this.groupSizes.get(key)!;
-    if (size === 1) {
-      this.groupSizes = this.groupSizes.delete(key);
-    } else {
-      this.groupSizes = this.groupSizes.set(key, size - 1);
-    }
-  }
-
-  addToGroup(key: K, index: number, value: X): MapCommand<K, List<X>> {
-    const isNew = !this.groupSizes.has(key);
-    this.incrementSize(key);
-    if (isNew) {
-      return { type: "add", key, value: List<X>([value]) };
-    }
-    return {
-      type: "update",
-      key,
-      command: [{ type: "insert", index, value }],
-    };
-  }
-
-  removeFromGroup(key: K, index: number): MapCommand<K, List<X>> {
-    const size = this.groupSizes.get(key)!;
-    this.decrementSize(key);
-    if (size === 1) {
-      return { type: "delete", key };
-    }
-    return {
-      type: "update",
-      key,
-      command: [{ type: "remove", index }],
-    };
-  }
-
-  updateInGroup(
-    key: K,
-    index: number,
-    command: Changes<X>,
-  ): MapCommand<K, List<X>> {
-    return {
-      type: "update",
-      key,
-      command: [{ type: "update", index, command }],
-    };
-  }
-
-  moveInGroup(
-    key: K,
-    fromIdx: number,
-    toIdx: number,
-  ): MapCommand<K, List<X>> | null {
-    if (fromIdx === toIdx) return null;
-    return {
-      type: "update",
-      key,
-      command: [{ type: "move", from: fromIdx, to: toIdx }],
-    };
-  }
-
-  clear(): void {
-    this.groupSizes = IMap();
-  }
-}
-
-function processStructuralCommand<X, K extends NonNullable<unknown>>(
-  tree: TwoThreeTree<ID, TreeEntry<K>, GroupSummary<K>>,
-  tracker: ListGroupTracker<X, K>,
-  cmd: ListCommand<Cell<ID>>,
-  keysMap: IMap<ID, Cell<K>>,
-  valuesMap: IMap<ID, X>,
-): MapCommand<K, List<X>>[] {
-  const results: MapCommand<K, List<X>>[] = [];
-
-  switch (cmd.type) {
-    case "insert": {
-      const id = cmd.value.value;
-      const keyCell = keysMap.get(id);
-      if (!keyCell) {
-        // Transient insert: will be removed later in this batch
-        tree.insert(id, { key: null, cellId: cmd.value }, (acc) => acc.total > cmd.index);
-        break;
-      }
-      const key = keyCell.value;
-      tree.insert(id, { key, cellId: cmd.value }, (acc) => acc.total > cmd.index);
-      const idx = groupIndex(tree, id, key);
-      const value = valuesMap.get(id)!;
-      results.push(tracker.addToGroup(key, idx, value));
-      break;
-    }
-    case "remove": {
-      const found = tree.findByThreshold((acc) => acc.total > cmd.index);
-      if (found) {
-        const { id, value: entry } = found;
-        if (entry.key === null) {
-          tree.remove(id);
-          break;
-        }
-        const idx = groupIndex(tree, id, entry.key);
-        tree.remove(id);
-        results.push(tracker.removeFromGroup(entry.key, idx));
-      }
-      break;
-    }
-    case "move": {
-      const found = tree.findByThreshold((acc) => acc.total > cmd.from);
-      if (found) {
-        const { id, value: entry } = found;
-        if (entry.key === null) {
-          tree.remove(id);
-          tree.insert(id, entry, (acc) => acc.total > cmd.to);
-          break;
-        }
-        const oldIdx = groupIndex(tree, id, entry.key);
-        tree.remove(id);
-        tree.insert(id, entry, (acc) => acc.total > cmd.to);
-        const newIdx = groupIndex(tree, id, entry.key);
-        const moveCmd = tracker.moveInGroup(entry.key, oldIdx, newIdx);
-        if (moveCmd) results.push(moveCmd);
-      }
-      break;
-    }
-    case "clear": {
-      tree.clear();
-      if (tracker.groupSizes.size > 0) {
-        tracker.clear();
-        results.push({ type: "clear" });
-      }
-      break;
-    }
-  }
-
-  return results;
-}
-
-function processKeyChange<X, K extends NonNullable<unknown>>(
-  tree: TwoThreeTree<ID, TreeEntry<K>, GroupSummary<K>>,
-  tracker: ListGroupTracker<X, K>,
-  id: ID,
-  newKey: K,
-  currentValue: X,
-): MapCommand<K, List<X>>[] {
-  const entry = tree.get(id);
-  if (!entry || entry.key === null || is(entry.key, newKey)) return [];
-
-  const oldKey = entry.key;
-  const oldIdx = groupIndex(tree, id, oldKey);
-  tree.update(id, { ...entry, key: newKey });
-  const newIdx = groupIndex(tree, id, newKey);
-
-  return [
-    tracker.removeFromGroup(oldKey, oldIdx),
-    tracker.addToGroup(newKey, newIdx, currentValue),
-  ];
-}
-
-function processValueUpdate<X, K extends NonNullable<unknown>>(
-  tree: TwoThreeTree<ID, TreeEntry<K>, GroupSummary<K>>,
-  tracker: ListGroupTracker<X, K>,
-  id: ID,
-  command: Changes<X>,
-): MapCommand<K, List<X>>[] {
-  const entry = tree.get(id);
-  if (!entry || entry.key === null) return [];
-
-  const idx = groupIndex(tree, id, entry.key);
-  return [tracker.updateInGroup(entry.key, idx, command)];
+function measureGroupEntry(id: ID): GroupInfo {
+  return { count: 1, lastId: id };
 }
 
 /**
@@ -230,25 +38,98 @@ export function groupByList<X, K extends NonNullable<unknown>>(
   const [structure, valuesMap] = decomposeList(graph, list);
   const keysMap = mapMap(graph, valuesMap, keyFn);
 
-  const tree = new TwoThreeTree<ID, TreeEntry<K>, GroupSummary<K>>(
-    groupSummaryMonoid<K>(),
-    measureEntry,
-  );
-  const tracker = new ListGroupTracker<X, K>();
+  // Sequence counter for making opaque ID objects comparable in IndexedList
+  let nextSeq = 0;
+  const idSeq = new WeakMap<object, number>();
+  const assignSeq = (id: ID): void => {
+    if (!idSeq.has(id)) {
+      idSeq.set(id, nextSeq++);
+    }
+  };
+  const compareIds = (a: ID, b: ID): number => {
+    return idSeq.get(a)! - idSeq.get(b)!;
+  };
+  const createEmptyIL = (): IndexedList<ID, ID> =>
+    IndexedList.create<ID, ID>({
+      compareIds,
+      xToNodeId: (id: ID) => id,
+    });
+
+  // Source IndexedList: tracks all elements in source order.
+  // Provides isBefore() for ordering comparisons and
+  // valueAt() for index-to-ID mapping.
+  let sourceIL = createEmptyIL();
+
+  // Per-group TwoThreeTrees with a count+lastId monoid.
+  // getPrefixSummaryById gives group index in O(log g).
+  // insert uses lastId in the threshold to place elements in source order.
+  const groupTrees = new Map<K, TwoThreeTree<ID, ID, GroupInfo>>();
+
+  // Key cache: ID -> current key (needed for remove/move where the
+  // element may already be gone from the materialized keysMap).
+  const keyCache = new Map<ID, K>();
+
+  const createGroupTree = () =>
+    new TwoThreeTree<ID, ID, GroupInfo>(groupInfoMonoid, measureGroupEntry);
+
+  function addToGroup(key: K, id: ID, value: X): MapCommand<K, List<X>> {
+    let groupTree = groupTrees.get(key);
+    const isNew = groupTree === undefined;
+    if (isNew) {
+      groupTree = createGroupTree();
+      groupTrees.set(key, groupTree);
+    }
+    groupTree!.insert(id, id, (acc) =>
+      acc.lastId !== null && sourceIL.isBefore(id, acc.lastId),
+    );
+
+    if (isNew) {
+      return { type: "add", key, value: List<X>([value]) };
+    }
+    const idx = groupTree!.getPrefixSummaryById(id)!.count;
+    return {
+      type: "update",
+      key,
+      command: [{ type: "insert", index: idx, value }],
+    };
+  }
+
+  function removeFromGroup(key: K, id: ID): MapCommand<K, List<X>> {
+    const groupTree = groupTrees.get(key)!;
+    const idx = groupTree.getPrefixSummaryById(id)!.count;
+    groupTree.remove(id);
+
+    if (groupTree.summary.count === 0) {
+      groupTrees.delete(key);
+      return { type: "delete", key };
+    }
+    return {
+      type: "update",
+      key,
+      command: [{ type: "remove", index: idx }],
+    };
+  }
 
   // Build initial groups
   let initialGroups = IMap<K, List<X>>();
   structure.previousSnapshot.forEach((cellId) => {
     const id = cellId.value;
+    assignSeq(id);
     const keyCell = keysMap.previousSnapshot.get(id);
     const value = valuesMap.previousSnapshot.get(id);
     if (!keyCell || value === undefined) return;
     const key = keyCell.value;
-    tree.insert(id, { key, cellId }, () => false);
-    tracker.groupSizes = tracker.groupSizes.set(
-      key,
-      (tracker.groupSizes.get(key) ?? 0) + 1,
-    );
+
+    sourceIL = sourceIL.append(id)[0];
+
+    let groupTree = groupTrees.get(key);
+    if (!groupTree) {
+      groupTree = createGroupTree();
+      groupTrees.set(key, groupTree);
+    }
+    groupTree.insert(id, id, () => false); // Append: elements arrive in order
+    keyCache.set(id, key);
+
     const existing = initialGroups.get(key) ?? List<X>();
     initialGroups = initialGroups.set(key, existing.push(value));
   });
@@ -281,29 +162,123 @@ export function groupByList<X, K extends NonNullable<unknown>>(
 
       // Process structural changes
       for (const cmd of structCommands) {
-        if (cmd.type === "insert") insertedIds.add(cmd.value.value);
-        const cmds = processStructuralCommand(tree, tracker, cmd, keysMat, valsMat);
-        outputCmds.push(...cmds);
+        switch (cmd.type) {
+          case "insert": {
+            const id = cmd.value.value;
+            assignSeq(id);
+            insertedIds.add(id);
+            sourceIL = sourceIL.insertAt(cmd.index, id)[0];
+
+            const keyCell = keysMat.get(id);
+            if (!keyCell) {
+              // Transient insert: will be removed later in this batch
+              break;
+            }
+            const key = keyCell.value;
+            keyCache.set(id, key);
+            outputCmds.push(addToGroup(key, id, valsMat.get(id)!));
+            break;
+          }
+          case "remove": {
+            const id = sourceIL.valueAt(cmd.index);
+            if (id === undefined) break;
+
+            const key = keyCache.get(id);
+            if (key === undefined) {
+              // Transient element (no key assigned)
+              sourceIL = sourceIL.remove(id);
+              break;
+            }
+
+            outputCmds.push(removeFromGroup(key, id));
+            sourceIL = sourceIL.remove(id);
+            keyCache.delete(id);
+            break;
+          }
+          case "move": {
+            const id = sourceIL.valueAt(cmd.from);
+            if (id === undefined) break;
+
+            const key = keyCache.get(id);
+            if (key === undefined) {
+              // Transient element
+              sourceIL = sourceIL.remove(id);
+              sourceIL = sourceIL.insertAt(cmd.to, id)[0];
+              break;
+            }
+
+            // Get old group index
+            const groupTree = groupTrees.get(key)!;
+            const oldGroupIdx = groupTree.getPrefixSummaryById(id)!.count;
+
+            // Remove from group and source
+            groupTree.remove(id);
+            sourceIL = sourceIL.remove(id);
+
+            // Re-insert into source at new position
+            sourceIL = sourceIL.insertAt(cmd.to, id)[0];
+
+            // Re-insert into group at correct position (source order via isBefore)
+            groupTree.insert(id, id, (acc) =>
+              acc.lastId !== null && sourceIL.isBefore(id, acc.lastId),
+            );
+            const newGroupIdx = groupTree.getPrefixSummaryById(id)!.count;
+
+            if (oldGroupIdx !== newGroupIdx) {
+              outputCmds.push({
+                type: "update",
+                key,
+                command: [{ type: "move", from: oldGroupIdx, to: newGroupIdx }],
+              });
+            }
+            break;
+          }
+          case "clear": {
+            sourceIL = createEmptyIL();
+            if (groupTrees.size > 0) {
+              groupTrees.clear();
+              keyCache.clear();
+              outputCmds.push({ type: "clear" });
+            }
+            break;
+          }
+        }
       }
 
-      // Process key changes (from keysMap.changes directly)
+      // Process key changes
       for (const cmd of keyCommands) {
         if (cmd.type === "update" && cmd.command !== null && !insertedIds.has(cmd.key)) {
+          const id = cmd.key;
           const newKey = cmd.command as K;
-          const currentValue = valsMat.get(cmd.key)!;
-          const cmds = processKeyChange(tree, tracker, cmd.key, newKey, currentValue);
-          if (cmds.length > 0) {
-            keyChangedIds.add(cmd.key);
-            outputCmds.push(...cmds);
-          }
+          const oldKey = keyCache.get(id);
+          if (oldKey === undefined || is(oldKey, newKey)) continue;
+
+          const currentValue = valsMat.get(id)!;
+          outputCmds.push(removeFromGroup(oldKey, id));
+          outputCmds.push(addToGroup(newKey, id, currentValue));
+          keyCache.set(id, newKey);
+          keyChangedIds.add(id);
         }
       }
 
       // Process value-only updates (skip IDs that had key changes)
       for (const cmd of valCommands) {
         if (cmd.type === "update" && !insertedIds.has(cmd.key) && !keyChangedIds.has(cmd.key)) {
-          const cmds = processValueUpdate(tree, tracker, cmd.key, cmd.command);
-          outputCmds.push(...cmds);
+          const id = cmd.key;
+          const key = keyCache.get(id);
+          if (key === undefined) continue;
+
+          const groupTree = groupTrees.get(key);
+          if (!groupTree) continue;
+
+          const prefix = groupTree.getPrefixSummaryById(id);
+          if (prefix === undefined) continue;
+
+          outputCmds.push({
+            type: "update",
+            key,
+            command: [{ type: "update", index: prefix.count, command: cmd.command }],
+          });
         }
       }
 
